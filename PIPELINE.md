@@ -9,9 +9,9 @@
 
 | 순서 | 티켓 | 상태 | 설명 |
 |------|------|------|------|
-| 1 | T-001 | 🟡 READY | 프로젝트 기반 세팅 |
-| 2 | T-002 | ⬜ BACKLOG | Google Calendar 연동 |
-| 3 | T-003 | ⬜ BACKLOG | Google Maps 대중교통 이동 시간 |
+| 1 | T-001 | 🟢 DONE | 프로젝트 기반 세팅 |
+| 2 | T-002 | 🟡 READY | Google Calendar 연동 |
+| 3 | T-003 | 🟡 READY | Google Maps 대중교통 이동 시간 |
 | 4 | T-004 | ⬜ BACKLOG | 출발 시각 계산 + 알림 판단 엔진 |
 | 5 | T-005 | ⬜ BACKLOG | 텔레그램 알림 전송 |
 | 6 | T-006 | ⬜ BACKLOG | 중복 알림 방지 (dedup) |
@@ -25,9 +25,9 @@
 <!-- QUEUE:START -->
 | ID | 제목 | 담당 | 상태 | 의존 |
 |----|------|------|------|------|
-| T-001 | 프로젝트 기반 세팅 | Codex | READY | - |
-| T-002 | Google Calendar 연동 | Codex | BACKLOG | T-001 |
-| T-003 | Google Maps 대중교통 이동 시간 | Codex | BACKLOG | T-001 |
+| T-001 | 프로젝트 기반 세팅 | Codex | DONE | - |
+| T-002 | Google Calendar 연동 | Codex | READY | T-001 |
+| T-003 | Google Maps 대중교통 이동 시간 | Codex | READY | T-001 |
 | T-004 | 출발 시각 계산 + 알림 판단 엔진 | Codex | BACKLOG | T-002, T-003 |
 | T-005 | 텔레그램 알림 전송 | Codex | BACKLOG | T-004 |
 | T-006 | 중복 알림 방지 (dedup) | Codex | BACKLOG | T-005 |

@@ -1,0 +1,19 @@
+user:
+  home_address: "서울시 OO구 OO동 OO"
+  default_transport: "transit"
+
+transport:
+  transit:
+    api: "google"
+    buffer_minutes: 10
+  driving:
+    api: "kakao"
+    buffer_minutes: 15
+  walking:
+    api: "google"
+    buffer_minutes: 5
+
+schedule:
+  lookahead_hours: 3
+  alert_window_minutes: 10
+  dedup_ttl_minutes: 60
