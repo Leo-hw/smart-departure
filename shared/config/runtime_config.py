@@ -8,6 +8,7 @@ from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 SETTINGS_PATH = BASE_DIR / "shared" / "config" / "settings.yaml"
+ENV_PATH = BASE_DIR / ".env"
 
 BASE_REQUIRED_ENV_VARS = [
     "GOOGLE_SERVICE_ACCOUNT_JSON",
@@ -39,6 +40,28 @@ def load_settings() -> dict[str, Any]:
         user_settings["home_address"] = home_address
 
     return settings
+
+
+def load_dotenv_file(path: Path | None = None) -> None:
+    """Load a local .env file into os.environ without overriding exported values."""
+    env_path = path or ENV_PATH
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+
+        if value.startswith(("\"", "'")) and value.endswith(("\"", "'")):
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
 
 
 def get_enabled_channels(settings: dict[str, Any]) -> list[str]:

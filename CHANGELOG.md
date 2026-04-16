@@ -2,6 +2,12 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### T-006 dedup 완료
+- `core/dedup.py`에 `.runtime/sent_alerts.json` 기반 TTL dedup 필터와 성공 전송 기록 저장 로직 추가
+- `main.py` 실행 흐름에 dedup 선필터와 성공 전송 후 sent 기록 반영 로직 추가
+- `.env` 자동 로드를 추가해 로컬 환경변수 관리 흐름을 보강
+- `tests/test_dedup.py`, `tests/test_runtime_env_loading.py`를 추가해 dedup TTL과 `.env` 로딩 동작 검증
+
 ### T-005 알림 채널 라우팅 완료
 - `shared/config/runtime_config.py`로 설정 로더와 채널별 환경변수 검증 로직 분리
 - `core/notifier.py`에 Discord webhook, Telegram, 다중 채널 라우팅과 공통 메시지 포맷 구현
