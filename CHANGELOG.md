@@ -2,6 +2,12 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### T-004 출발 시각 계산 엔진 완료
+- `core/departure_engine.py`에 출발 시각 계산, 이동 수단 선택, buffer 반영, alert window 판단 로직 추가
+- `DepartureDecision` 구조와 `build_departure_decisions()`, `evaluate_departure_alert()` 구현
+- `tests/test_departure_engine.py`로 default transport, override, alert filtering, 설정 오류 케이스 검증 추가
+- 파이프라인 상태를 갱신해 다음 작업 `T-005`를 READY로 전환
+
 ### T-002, T-003 병렬 구현 완료
 - `core/calendar_service.py`에 Google Calendar 서비스 계정 연동, 복수 캘린더 조회, KST 변환, `transport_override` 파싱 추가
 - `core/maps_service.py`에 Google Directions API 조회, 6시간 TTL 캐시, fallback 추정값 반환 로직 추가
