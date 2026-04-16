@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import tempfile
-import textwrap
 import unittest
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from core import calendar_service
@@ -38,27 +35,12 @@ class _FakeService:
 
 class CalendarServiceTests(unittest.TestCase):
     def setUp(self):
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmpdir.cleanup)
-        self.settings_path = Path(self._tmpdir.name) / "settings.yaml"
-        self.settings_path.write_text(
-            textwrap.dedent(
-                """
-                user:
-                  home_address: "서울시 OO구 OO동 OO"
-                schedule:
-                  lookahead_hours: 3
-                """
-            ).strip()
-            + "\n",
-            encoding="utf-8",
-        )
+        self.settings = {
+            "user": {"home_address": "서울시 OO구 OO동 OO"},
+            "schedule": {"lookahead_hours": 3},
+        }
 
     def test_get_upcoming_events_filters_and_normalizes_events(self):
-        original_settings_path = calendar_service.SETTINGS_PATH
-        calendar_service.SETTINGS_PATH = self.settings_path
-        self.addCleanup(self._restore_settings_path, original_settings_path)
-
         original_env = {
             "GOOGLE_SERVICE_ACCOUNT_JSON": calendar_service.os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"),
             "GOOGLE_CALENDAR_IDS": calendar_service.os.environ.get("GOOGLE_CALENDAR_IDS"),
@@ -125,6 +107,9 @@ class CalendarServiceTests(unittest.TestCase):
         original_builder = calendar_service._build_calendar_service
         calendar_service._build_calendar_service = lambda: fake_service
         self.addCleanup(self._restore_builder, original_builder)
+        original_load_settings = calendar_service.load_settings
+        calendar_service.load_settings = lambda: self.settings
+        self.addCleanup(self._restore_load_settings, original_load_settings)
 
         events = calendar_service.get_upcoming_events()
 
@@ -150,9 +135,6 @@ class CalendarServiceTests(unittest.TestCase):
         self.assertIsNone(calendar_service._parse_transport_override("transport: bicycle"))
         self.assertIsNone(calendar_service._parse_transport_override("other: transit"))
 
-    def _restore_settings_path(self, original_settings_path):
-        calendar_service.SETTINGS_PATH = original_settings_path
-
     def _restore_env(self, original_env):
         for key, value in original_env.items():
             if value is None:
@@ -165,6 +147,9 @@ class CalendarServiceTests(unittest.TestCase):
 
     def _restore_builder(self, original_builder):
         calendar_service._build_calendar_service = original_builder
+
+    def _restore_load_settings(self, original_load_settings):
+        calendar_service.load_settings = original_load_settings
 
 
 if __name__ == "__main__":

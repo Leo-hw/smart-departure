@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from core.calendar_service import CalendarEvent, get_upcoming_events
 from core.maps_service import get_travel_time
-from main import load_settings
+from shared.config.runtime_config import load_settings
 
 KST = ZoneInfo("Asia/Seoul")
 

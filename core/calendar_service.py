@@ -7,16 +7,14 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
+
+from shared.config.runtime_config import load_settings
 
 KST = ZoneInfo("Asia/Seoul")
 SCOPES = ("https://www.googleapis.com/auth/calendar.readonly",)
 ALLOWED_TRANSPORT_OVERRIDES = {"transit", "driving", "walking"}
-SETTINGS_PATH = Path(__file__).resolve().parents[1] / "shared" / "config" / "settings.yaml"
-
-
 @dataclass(frozen=True)
 class CalendarEvent:
     """Normalized calendar event for departure calculations."""
@@ -30,7 +28,7 @@ class CalendarEvent:
 
 def get_upcoming_events() -> list[CalendarEvent]:
     """Return upcoming events with locations inside the configured lookahead window."""
-    settings = _load_settings()
+    settings = load_settings()
     lookahead_hours = int(settings.get("schedule", {}).get("lookahead_hours", 0))
     calendar_ids = _parse_calendar_ids(os.environ.get("GOOGLE_CALENDAR_IDS"))
     service = _build_calendar_service()
@@ -88,61 +86,6 @@ def _build_calendar_service():
     credentials_info = json.loads(service_account_json)
     credentials = service_account.Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
     return build("calendar", "v3", credentials=credentials, cache_discovery=False)
-
-
-def _load_settings() -> dict[str, Any]:
-    if not SETTINGS_PATH.exists():
-        raise FileNotFoundError(f"Settings file not found: {SETTINGS_PATH}")
-
-    try:
-        import yaml  # type: ignore
-    except ModuleNotFoundError:
-        return _parse_simple_yaml(SETTINGS_PATH.read_text(encoding="utf-8"))
-
-    with SETTINGS_PATH.open("r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle) or {}
-
-
-def _parse_simple_yaml(raw_text: str) -> dict[str, Any]:
-    root: dict[str, Any] = {}
-    stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
-
-    for raw_line in raw_text.splitlines():
-        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
-            continue
-
-        indent = len(raw_line) - len(raw_line.lstrip(" "))
-        stripped = raw_line.strip()
-        if ":" not in stripped:
-            raise ValueError(f"Unsupported YAML line: {stripped}")
-
-        key, value = stripped.split(":", 1)
-        key = key.strip()
-        value = value.strip()
-
-        while len(stack) > 1 and indent <= stack[-1][0]:
-            stack.pop()
-
-        parent = stack[-1][1]
-        if value == "":
-            container: dict[str, Any] = {}
-            parent[key] = container
-            stack.append((indent, container))
-            continue
-
-        parent[key] = _coerce_scalar(value)
-
-    return root
-
-
-def _coerce_scalar(value: str) -> Any:
-    cleaned = value.split("  #", 1)[0].strip()
-    if cleaned.startswith(("\"", "'")) and cleaned.endswith(("\"", "'")):
-        return cleaned[1:-1]
-    if cleaned.isdigit():
-        return int(cleaned)
-    return cleaned
-
 
 def _parse_calendar_ids(raw_value: str | None) -> list[str]:
     if not raw_value:
