@@ -57,6 +57,14 @@ export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 
 정상 실행 시 `settings.yaml`을 로드하고, 현재 알림 대상 일정 수와 채널 전송 시도 수를 출력합니다.
 
+`.env` 파일에 같은 값을 넣어도 로컬 실행 시 자동으로 읽습니다. 다만 이미 export된 값이 있으면 그 값을 우선합니다.
+
+## Dedup
+
+- 전송 성공한 이벤트는 `.runtime/sent_alerts.json`에 기록됩니다.
+- 같은 `event_id`는 `schedule.dedup_ttl_minutes` 동안 다시 전송하지 않습니다.
+- TTL이 지난 기록은 자동으로 정리됩니다.
+
 ## Railway
 
 - `Procfile` 기준 실행 명령: `worker: python main.py`
