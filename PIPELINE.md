@@ -13,8 +13,8 @@
 | 2 | T-002 | 🟢 DONE | Google Calendar 연동 |
 | 3 | T-003 | 🟢 DONE | Google Maps 대중교통 이동 시간 |
 | 4 | T-004 | 🟢 DONE | 출발 시각 계산 + 알림 판단 엔진 |
-| 5 | T-005 | 🟡 READY | 텔레그램 알림 전송 |
-| 6 | T-006 | ⬜ BACKLOG | 중복 알림 방지 (dedup) |
+| 5 | T-005 | 🟢 DONE | 알림 채널 라우팅 + 전송 |
+| 6 | T-006 | 🟡 READY | 중복 알림 방지 (dedup) |
 
 **파이프라인 완료 기준**: T-006 완료 + Railway 실제 알림 수신 확인
 
@@ -29,8 +29,8 @@
 | T-002 | Google Calendar 연동 | Codex | DONE | T-001 |
 | T-003 | Google Maps 대중교통 이동 시간 | Codex | DONE | T-001 |
 | T-004 | 출발 시각 계산 + 알림 판단 엔진 | Codex | DONE | T-002, T-003 |
-| T-005 | 텔레그램 알림 전송 | Codex | READY | T-004 |
-| T-006 | 중복 알림 방지 (dedup) | Codex | BACKLOG | T-005 |
+| T-005 | 알림 채널 라우팅 + 전송 | Codex | DONE | T-004 |
+| T-006 | 중복 알림 방지 (dedup) | Codex | READY | T-005 |
 | T-007 | 카카오 Maps 자동차 길찾기 | Codex | BACKLOG | T-006 |
 | T-008 | settings.yaml 이동 수단 설정 + 캘린더 오버라이드 | Codex | BACKLOG | T-007 |
 <!-- QUEUE:END -->

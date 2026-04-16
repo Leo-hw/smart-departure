@@ -17,3 +17,10 @@ schedule:
   lookahead_hours: 3
   alert_window_minutes: 10
   dedup_ttl_minutes: 60
+
+notification:
+  enabled_channels: ["discord"]
+  discord:
+    username: "smart-departure"
+  telegram:
+    parse_mode: "Markdown"
