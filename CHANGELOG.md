@@ -2,6 +2,12 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### T-005 알림 채널 라우팅 완료
+- `shared/config/runtime_config.py`로 설정 로더와 채널별 환경변수 검증 로직 분리
+- `core/notifier.py`에 Discord webhook, Telegram, 다중 채널 라우팅과 공통 메시지 포맷 구현
+- `main.py`를 실제 알림 흐름으로 연결하고, 활성 채널 기준으로 조건부 환경변수 검증 적용
+- `tests/test_notifier.py`, `tests/test_runtime_config.py`를 추가하고 파이프라인 상태를 `T-006 READY`로 갱신
+
 ### T-004 출발 시각 계산 엔진 완료
 - `core/departure_engine.py`에 출발 시각 계산, 이동 수단 선택, buffer 반영, alert window 판단 로직 추가
 - `DepartureDecision` 구조와 `build_departure_decisions()`, `evaluate_departure_alert()` 구현
