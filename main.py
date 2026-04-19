@@ -1,14 +1,13 @@
-"""Application entrypoint for Railway cron execution."""
+"""Application entrypoint for scheduled departure checks."""
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 from core.dedup import filter_pending_decisions, mark_successful_deliveries
-from core.departure_engine import evaluate_departure_alert
 from core.notifier import send_notifications
+from core.scheduler import get_due_alerts, load_or_build_daily_schedule
 from shared.config.runtime_config import load_dotenv_file, load_settings, validate_environment
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -17,7 +16,7 @@ RUNTIME_DIR = BASE_DIR / ".runtime"
 
 
 def ensure_runtime_dir() -> None:
-    """Create local runtime storage for dedup and caches."""
+    """Create local runtime storage for schedules, dedup, and caches."""
     RUNTIME_DIR.mkdir(exist_ok=True)
 
 
@@ -27,15 +26,14 @@ def main() -> int:
         settings = load_settings()
         env = validate_environment(settings)
         ensure_runtime_dir()
-        alertable_decisions = evaluate_departure_alert()
-        pending_decisions, skipped_decisions = filter_pending_decisions(alertable_decisions, settings=settings)
-        deliveries = send_notifications(pending_decisions, settings=settings)
+        plans = load_or_build_daily_schedule(settings)
+        due_alerts = get_due_alerts(plans, settings=settings)
+        pending_alerts, skipped_alerts = filter_pending_decisions(due_alerts, settings=settings)
+        deliveries = send_notifications(pending_alerts, settings=settings)
         successful_event_ids = {item.event_id for item in deliveries if item.success}
-        successful_decisions = [
-            decision for decision in pending_decisions if decision.event.event_id in successful_event_ids
-        ]
-        if successful_decisions:
-            mark_successful_deliveries(successful_decisions, settings=settings)
+        successful_alerts = [alert for alert in pending_alerts if alert.event_id in successful_event_ids]
+        if successful_alerts:
+            mark_successful_deliveries(successful_alerts, settings=settings)
     except Exception as exc:  # pragma: no cover - CLI bootstrap path
         print(f"[smart-departure] startup failed: {exc}", file=sys.stderr)
         return 1
@@ -45,8 +43,9 @@ def main() -> int:
     print(f"Loaded settings from: {SETTINGS_PATH}")
     print(f"Configured calendar IDs: {len(calendars)}")
     print(f"Default transport: {settings['user'].get('default_transport', 'transit')}")
-    print(f"Alertable events: {len(alertable_decisions)}")
-    print(f"Dedup skipped events: {len(skipped_decisions)}")
+    print(f"Today's plans: {len(plans)}")
+    print(f"Due alerts: {len(due_alerts)}")
+    print(f"Dedup skipped events: {len(skipped_alerts)}")
     print(f"Notifications attempted: {len(deliveries)}")
     failed_deliveries = [item for item in deliveries if not item.success]
     if failed_deliveries:

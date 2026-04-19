@@ -2,6 +2,12 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### T-007 스케줄링 재설계 완료
+- `core/scheduler.py`에 당일 계획 생성, `.runtime/schedule_today.json` 저장, due alert 추출 로직 추가
+- `main.py`를 스케줄 계획 재사용 구조로 전환하고 prep/departure 알림 흐름을 연결
+- alert 단위 dedup 키를 지원하도록 `core/dedup.py`를 확장
+- Oracle crontab 가이드와 GitHub Actions 워크플로우를 추가하고 README 배포 가이드를 갱신
+
 ### T-006 dedup 완료
 - `core/dedup.py`에 `.runtime/sent_alerts.json` 기반 TTL dedup 필터와 성공 전송 기록 저장 로직 추가
 - `main.py` 실행 흐름에 dedup 선필터와 성공 전송 후 sent 기록 반영 로직 추가

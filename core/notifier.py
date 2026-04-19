@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from core.departure_engine import DepartureDecision
+from core.scheduler import ScheduledAlert
 from shared.config.runtime_config import get_enabled_channels, load_settings
 
 CHANNEL_LABELS = {
@@ -33,10 +34,10 @@ class NotificationDelivery:
 
 
 def send_notifications(
-    decisions: Iterable[DepartureDecision],
+    decisions: Iterable[ScheduledAlert | DepartureDecision],
     settings: dict[str, Any] | None = None,
 ) -> list[NotificationDelivery]:
-    """Send decisions to all enabled channels and collect delivery results."""
+    """Send alerts to all enabled channels and collect delivery results."""
     runtime_settings = settings or load_settings()
     enabled_channels = get_enabled_channels(runtime_settings)
     if not enabled_channels:
@@ -44,14 +45,18 @@ def send_notifications(
 
     deliveries: list[NotificationDelivery] = []
     for decision in decisions:
-        message = format_departure_message(decision)
+        message = (
+            format_scheduled_alert_message(decision)
+            if isinstance(decision, ScheduledAlert)
+            else format_departure_message(decision)
+        )
         for channel in enabled_channels:
             deliveries.append(_send_channel(channel, decision, message, runtime_settings))
     return deliveries
 
 
 def format_departure_message(decision: DepartureDecision) -> str:
-    """Render a shared departure alert message for all channels."""
+    """Render a shared departure alert message for older call sites."""
     transport_label = TRANSPORT_LABELS.get(decision.transport_mode, decision.transport_mode)
     estimate_suffix = " (이동 시간 추정)" if decision.is_estimated else ""
     return "\n".join(
@@ -67,9 +72,41 @@ def format_departure_message(decision: DepartureDecision) -> str:
     )
 
 
+def format_scheduled_alert_message(alert: ScheduledAlert) -> str:
+    """Render prep/departure messages from scheduled alert plans."""
+    transport_label = TRANSPORT_LABELS.get(alert.plan.transport_mode, alert.plan.transport_mode)
+    estimate_suffix = " (이동 시간 추정)" if alert.plan.is_estimated else ""
+    route_summary = f"{transport_label} 약 {alert.plan.travel_minutes}분{estimate_suffix}"
+
+    if alert.alert_type == "prep":
+        return "\n".join(
+            [
+                "🧳 준비를 시작할 시간이에요!",
+                "",
+                f"📅 일정: {alert.plan.summary}",
+                f"🕐 준비 시작: {alert.alert_time.strftime('%Y-%m-%d %H:%M')}",
+                f"⏰ 출발 예정: {alert.plan.departure_time.strftime('%Y-%m-%d %H:%M')}",
+                f"🧭 경로 요약: {route_summary}",
+            ]
+        )
+
+    return "\n".join(
+        [
+            "🚀 출발할 시간이에요!",
+            "",
+            f"📅 일정: {alert.plan.summary}",
+            f"📍 장소: {alert.plan.location}",
+            f"🕐 시작: {alert.plan.event_start.strftime('%Y-%m-%d %H:%M')}",
+            f"🚌 이동: {route_summary}",
+            f"⏰ 출발: {alert.plan.departure_time.strftime('%Y-%m-%d %H:%M')} (버퍼 {alert.plan.buffer_minutes}분)",
+            f"🧭 경로 요약: {route_summary}",
+        ]
+    )
+
+
 def _send_channel(
     channel: str,
-    decision: DepartureDecision,
+    decision: ScheduledAlert | DepartureDecision,
     message: str,
     settings: dict[str, Any],
 ) -> NotificationDelivery:
@@ -79,14 +116,14 @@ def _send_channel(
         return _send_telegram(decision, message, settings)
     return NotificationDelivery(
         channel=channel,
-        event_id=decision.event.event_id,
+        event_id=_extract_event_id(decision),
         success=False,
         error=f"Unsupported notification channel: {channel}",
     )
 
 
 def _send_discord(
-    decision: DepartureDecision,
+    decision: ScheduledAlert | DepartureDecision,
     message: str,
     settings: dict[str, Any],
 ) -> NotificationDelivery:
@@ -100,12 +137,12 @@ def _send_discord(
         url=webhook_url,
         payload=payload,
         channel="discord",
-        event_id=decision.event.event_id,
+        event_id=_extract_event_id(decision),
     )
 
 
 def _send_telegram(
-    decision: DepartureDecision,
+    decision: ScheduledAlert | DepartureDecision,
     message: str,
     settings: dict[str, Any],
 ) -> NotificationDelivery:
@@ -122,7 +159,7 @@ def _send_telegram(
         url=url,
         payload=payload,
         channel="telegram",
-        event_id=decision.event.event_id,
+        event_id=_extract_event_id(decision),
     )
 
 
@@ -176,3 +213,9 @@ def _post_json(
 def send_telegram_alert(decision: DepartureDecision) -> NotificationDelivery:
     """Backward-compatible single-channel Telegram sender."""
     return _send_telegram(decision, format_departure_message(decision), load_settings())
+
+
+def _extract_event_id(decision: ScheduledAlert | DepartureDecision) -> str:
+    if isinstance(decision, ScheduledAlert):
+        return decision.plan.event_id
+    return decision.event.event_id
