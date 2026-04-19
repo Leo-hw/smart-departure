@@ -1,6 +1,6 @@
 # smart-departure
 
-Google Calendar 일정과 지도 API를 기반으로 출발 시각을 계산해 Discord webhook, Telegram 또는 둘 다로 알림을 보내는 Railway cron worker입니다.
+Google Calendar 일정과 지도 API를 기반으로 당일 알림 계획을 계산하고, Discord webhook, Telegram 또는 둘 다로 알림을 보내는 스케줄링 worker입니다.
 
 ## Requirements
 
@@ -55,18 +55,32 @@ export TELEGRAM_BOT_TOKEN='your-telegram-bot-token'
 export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 ```
 
-정상 실행 시 `settings.yaml`을 로드하고, 현재 알림 대상 일정 수와 채널 전송 시도 수를 출력합니다.
+정상 실행 시 `settings.yaml`을 로드하고, 당일 계획 수와 현재 due alert 수, 채널 전송 시도 수를 출력합니다.
 
 `.env` 파일에 같은 값을 넣어도 로컬 실행 시 자동으로 읽습니다. 다만 이미 export된 값이 있으면 그 값을 우선합니다.
 
+## Scheduling
+
+- 당일 일정 계획은 `.runtime/schedule_today.json`에 저장됩니다.
+- 현재 날짜와 계획 파일 날짜가 다르면 실행 시 자동 재계산합니다.
+- 준비 알림은 `schedule.prep_minutes`, 출발 알림은 이동 시간과 버퍼 기준으로 계산됩니다.
+
 ## Dedup
 
-- 전송 성공한 이벤트는 `.runtime/sent_alerts.json`에 기록됩니다.
-- 같은 `event_id`는 `schedule.dedup_ttl_minutes` 동안 다시 전송하지 않습니다.
+- 전송 성공한 알림은 `.runtime/sent_alerts.json`에 기록됩니다.
+- 같은 알림 키는 `schedule.dedup_ttl_minutes` 동안 다시 전송하지 않습니다.
 - TTL이 지난 기록은 자동으로 정리됩니다.
 
-## Railway
+## Deployment
 
-- `Procfile` 기준 실행 명령: `worker: python main.py`
-- cron 스케줄은 Railway 대시보드에서 설정합니다.
-- MVP 기준 권장 스케줄: 매 시간 정각 `0 * * * *`
+두 배포 방식 모두 같은 `main.py`를 실행합니다.
+
+### Oracle Crontab
+
+- 배포 가이드는 [deploy/oracle_crontab.md](./deploy/oracle_crontab.md)에 정리되어 있습니다.
+- 권장 주기: `*/30 * * * *`
+
+### GitHub Actions
+
+- 워크플로우는 [.github/workflows/departure_check.yml](./.github/workflows/departure_check.yml)에 추가되어 있습니다.
+- GitHub Secrets에 환경변수를 넣고 30분 간격 스케줄 또는 수동 실행으로 사용할 수 있습니다.
