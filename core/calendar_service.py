@@ -15,6 +15,8 @@ from shared.config.runtime_config import load_settings
 KST = ZoneInfo("Asia/Seoul")
 SCOPES = ("https://www.googleapis.com/auth/calendar.readonly",)
 ALLOWED_TRANSPORT_OVERRIDES = {"transit", "driving", "walking"}
+
+
 @dataclass(frozen=True)
 class CalendarEvent:
     """Normalized calendar event for departure calculations."""
@@ -26,14 +28,18 @@ class CalendarEvent:
     transport_override: str | None = None
 
 
-def get_upcoming_events() -> list[CalendarEvent]:
+def get_upcoming_events(lookahead_hours: int | None = None) -> list[CalendarEvent]:
     """Return upcoming events with locations inside the configured lookahead window."""
     settings = load_settings()
-    lookahead_hours = int(settings.get("schedule", {}).get("lookahead_hours", 0))
+    effective_lookahead_hours = (
+        int(lookahead_hours)
+        if lookahead_hours is not None
+        else int(settings.get("schedule", {}).get("lookahead_hours", 0))
+    )
     calendar_ids = _parse_calendar_ids(os.environ.get("GOOGLE_CALENDAR_IDS"))
     service = _build_calendar_service()
     now_kst = _current_time_kst()
-    window_end = now_kst + timedelta(hours=lookahead_hours)
+    window_end = now_kst + timedelta(hours=effective_lookahead_hours)
 
     seen_event_ids: set[str] = set()
     events: list[CalendarEvent] = []
@@ -86,6 +92,7 @@ def _build_calendar_service():
     credentials_info = json.loads(service_account_json)
     credentials = service_account.Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
     return build("calendar", "v3", credentials=credentials, cache_discovery=False)
+
 
 def _parse_calendar_ids(raw_value: str | None) -> list[str]:
     if not raw_value:

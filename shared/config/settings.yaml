@@ -14,8 +14,10 @@ transport:
     buffer_minutes: 5
 
 schedule:
+  run_mode: "check"
   lookahead_hours: 3
-  alert_window_minutes: 10
+  alert_window_minutes: 15
+  prep_minutes: 60
   dedup_ttl_minutes: 60
 
 notification:

@@ -8,8 +8,9 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from core.departure_engine import DepartureDecision
-from core.notifier import format_departure_message, send_notifications
+from core.notifier import format_departure_message, format_scheduled_alert_message, send_notifications
 from core.calendar_service import CalendarEvent
+from core.scheduler import SchedulePlan, ScheduledAlert
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -51,6 +52,33 @@ class NotifierTests(unittest.TestCase):
         self.assertIn("강남구 역삼동 OO카페", message)
         self.assertIn("대중교통 약 35분", message)
         self.assertIn("버퍼 10분", message)
+
+    def test_format_scheduled_alert_message_supports_prep_and_departure(self):
+        plan = SchedulePlan(
+            event_id="event-1",
+            summary="스터디 모임",
+            location="강남구 역삼동 OO카페",
+            event_start=datetime(2026, 4, 16, 15, 0, tzinfo=KST),
+            travel_minutes=35,
+            is_estimated=True,
+            departure_time=datetime(2026, 4, 16, 14, 15, tzinfo=KST),
+            prep_alert_time=datetime(2026, 4, 16, 13, 15, tzinfo=KST),
+            transport_mode="transit",
+            provider="google",
+            buffer_minutes=10,
+        )
+        prep_alert = ScheduledAlert(alert_type="prep", alert_time=plan.prep_alert_time, plan=plan)
+        departure_alert = ScheduledAlert(alert_type="departure", alert_time=plan.departure_time, plan=plan)
+
+        prep_message = format_scheduled_alert_message(prep_alert)
+        departure_message = format_scheduled_alert_message(departure_alert)
+
+        self.assertIn("준비를 시작할 시간", prep_message)
+        self.assertIn("출발 예정", prep_message)
+        self.assertIn("(이동 시간 추정)", prep_message)
+        self.assertIn("출발할 시간", departure_message)
+        self.assertIn("강남구 역삼동 OO카페", departure_message)
+        self.assertIn("경로 요약", departure_message)
 
     def test_send_notifications_posts_to_enabled_channels(self):
         settings = {
