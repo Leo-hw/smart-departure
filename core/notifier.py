@@ -180,7 +180,11 @@ def _post_json(
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "smart-departure/1.0 (+https://github.com/Leo-hw/smart-departure)",
+        },
         method="POST",
     )
     try:
@@ -195,11 +199,12 @@ def _post_json(
                 error=f"{CHANNEL_LABELS.get(channel, channel)} returned status {status_code}",
             )
     except urllib.error.HTTPError as exc:
+        response_body = _read_error_body(exc)
         return NotificationDelivery(
             channel=channel,
             event_id=event_id,
             success=False,
-            error=f"{CHANNEL_LABELS.get(channel, channel)} returned status {exc.code}",
+            error=f"{CHANNEL_LABELS.get(channel, channel)} returned status {exc.code}: {response_body}",
         )
     except (urllib.error.URLError, OSError) as exc:
         return NotificationDelivery(
@@ -213,6 +218,14 @@ def _post_json(
 def send_telegram_alert(decision: DepartureDecision) -> NotificationDelivery:
     """Backward-compatible single-channel Telegram sender."""
     return _send_telegram(decision, format_departure_message(decision), load_settings())
+
+
+def _read_error_body(exc: urllib.error.HTTPError) -> str:
+    try:
+        body = exc.read().decode("utf-8", errors="replace").strip()
+    except Exception:
+        return "no response body"
+    return body[:500] if body else "no response body"
 
 
 def _extract_event_id(decision: ScheduledAlert | DepartureDecision) -> str:
