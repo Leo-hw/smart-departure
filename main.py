@@ -44,7 +44,23 @@ def main() -> int:
     print(f"Configured calendar IDs: {len(calendars)}")
     print(f"Default transport: {settings['user'].get('default_transport', 'transit')}")
     print(f"Today's plans: {len(plans)}")
+    for plan in plans:
+        prep_time = plan.prep_alert_time.strftime("%Y-%m-%d %H:%M") if plan.prep_alert_time else "disabled"
+        print(
+            "[smart-departure] plan "
+            f"event_id={plan.event_id} summary={plan.summary!r} "
+            f"start={plan.event_start.strftime('%Y-%m-%d %H:%M')} "
+            f"prep={prep_time} "
+            f"departure={plan.departure_time.strftime('%Y-%m-%d %H:%M')} "
+            f"travel={plan.travel_minutes}m estimated={plan.is_estimated}"
+        )
     print(f"Due alerts: {len(due_alerts)}")
+    for alert in due_alerts:
+        print(
+            "[smart-departure] due "
+            f"type={alert.alert_type} event_id={alert.event_id} "
+            f"alert_time={alert.alert_time.strftime('%Y-%m-%d %H:%M')}"
+        )
     print(f"Dedup skipped events: {len(skipped_alerts)}")
     print(f"Notifications attempted: {len(deliveries)}")
     failed_deliveries = [item for item in deliveries if not item.success]
