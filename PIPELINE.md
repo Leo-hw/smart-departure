@@ -17,12 +17,16 @@
 | 6 | T-006 | 🟢 DONE | 중복 알림 방지 (dedup) |
 | 7 | T-007 | 🟢 DONE | 알림 스케줄링 재설계 + 배포 (Oracle/GHA) |
 | 8 | T-008 | 🟡 READY | 카카오 Maps 자동차 길찾기 |
-| 9 | T-009 | 🟡 READY | occasion별 준비 단계 알림 |
-| 10 | T-010 | 🟡 READY | 견고성 + 놓친 알림 catch-up |
+| 9 | T-010 | 🟡 READY | 견고성 + 놓친 알림 catch-up |
+| 10 | T-009 | 🚧 BLOCKED:T-010 | occasion별 준비 단계 알림 |
 
-**파이프라인 완료 기준**: T-008 + T-009 + T-010 완료
+**파이프라인 완료 기준**: T-008 + T-010 + T-009 완료
 
 > ⚠️ T-010은 운영 중 발견된 크래시(SSL 타임아웃)·알림 유실 대응. 우선순위 높음.
+>
+> **병렬 실행 규칙**: T-008 ∥ T-010 동시 진행 가능 (파일 겹침 없음).
+> T-009는 T-010과 `scheduler.py`·`settings.yaml`을 함께 고치고, catch-up "준비단계 가장 최근만" 로직이
+> T-009의 다단계 prep 위에서 동작해야 하므로 **T-010 머지 후** 진행. 동시 실행 금지.
 
 ---
 
@@ -39,8 +43,8 @@
 | T-006 | 중복 알림 방지 (dedup) | Codex | DONE | T-005 |
 | T-007 | 알림 스케줄링 재설계 + 배포 | Codex | DONE | T-006 |
 | T-008 | 카카오 Maps 자동차 길찾기 | Codex | READY | T-007 |
-| T-009 | occasion별 준비 단계 알림 | Codex | READY | T-007 |
 | T-010 | 견고성 + 놓친 알림 catch-up | Codex | READY | T-007 |
+| T-009 | occasion별 준비 단계 알림 | Codex | BLOCKED:T-010 | T-010 |
 <!-- QUEUE:END -->
 
 ---
