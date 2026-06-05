@@ -1,4 +1,4 @@
-"""TTL-based deduplication for sent alerts."""
+"""Persistent deduplication for sent and intentionally skipped alerts."""
 
 from __future__ import annotations
 
@@ -19,14 +19,13 @@ def filter_pending_decisions(
 ) -> tuple[list[object], list[object]]:
     """Split alertable items into pending and dedup-skipped sets."""
     current_time = _ensure_kst(now or _current_time_kst())
-    ttl = timedelta(minutes=int(settings.get("schedule", {}).get("dedup_ttl_minutes", 0)))
     sent_alerts = _load_sent_alerts()
-    active_alerts = _prune_expired_records(sent_alerts, ttl, current_time)
+    active_alerts = _prune_expired_records(sent_alerts, current_time)
 
     pending: list[object] = []
     skipped: list[object] = []
     for decision in decisions:
-        if _is_duplicate(decision, active_alerts, ttl, current_time):
+        if _is_duplicate(decision, active_alerts):
             skipped.append(decision)
         else:
             pending.append(decision)
@@ -42,39 +41,41 @@ def mark_successful_deliveries(
 ) -> None:
     """Persist successful notification records for future dedup checks."""
     current_time = _ensure_kst(now or _current_time_kst())
-    ttl = timedelta(minutes=int(settings.get("schedule", {}).get("dedup_ttl_minutes", 0)))
-    sent_alerts = _prune_expired_records(_load_sent_alerts(), ttl, current_time)
+    sent_alerts = _prune_expired_records(_load_sent_alerts(), current_time)
 
     for decision in delivered_decisions:
-        sent_alerts[_get_dedup_key(decision)] = {
-            "event_id": _get_event_id(decision),
-            "sent_at": current_time.isoformat(),
-            "departure_time": _get_departure_time(decision).isoformat(),
-        }
+        sent_alerts[_get_dedup_key(decision)] = _build_record(
+            decision,
+            status="sent",
+            recorded_at=current_time,
+        )
 
+    _save_sent_alerts(sent_alerts)
+
+
+def mark_skipped_deliveries(
+    skipped_decisions: Iterable[object],
+    settings: dict[str, Any],
+    now: datetime | None = None,
+) -> None:
+    """Persist prep stages superseded by a more recent missed prep alert."""
+    current_time = _ensure_kst(now or _current_time_kst())
+    sent_alerts = _prune_expired_records(_load_sent_alerts(), current_time)
+    for decision in skipped_decisions:
+        sent_alerts[_get_dedup_key(decision)] = _build_record(
+            decision,
+            status="skipped",
+            recorded_at=current_time,
+        )
     _save_sent_alerts(sent_alerts)
 
 
 def _is_duplicate(
     decision: object,
     sent_alerts: dict[str, dict[str, Any]],
-    ttl: timedelta,
-    now: datetime,
 ) -> bool:
     record = sent_alerts.get(_get_dedup_key(decision))
-    if not isinstance(record, dict):
-        return False
-
-    sent_at = record.get("sent_at")
-    if not isinstance(sent_at, str):
-        return False
-
-    try:
-        sent_at_dt = _parse_datetime(sent_at)
-    except ValueError:
-        return False
-
-    return now - sent_at_dt <= ttl
+    return isinstance(record, dict) and record.get("status") in {"sent", "skipped"}
 
 
 def _load_sent_alerts() -> dict[str, dict[str, Any]]:
@@ -99,26 +100,31 @@ def _save_sent_alerts(sent_alerts: dict[str, dict[str, Any]]) -> None:
 
 def _prune_expired_records(
     sent_alerts: dict[str, dict[str, Any]],
-    ttl: timedelta,
     now: datetime,
 ) -> dict[str, dict[str, Any]]:
-    if ttl.total_seconds() <= 0:
-        return {}
-
     active_records: dict[str, dict[str, Any]] = {}
     for dedup_key, record in sent_alerts.items():
         if not isinstance(record, dict):
             continue
-        sent_at = record.get("sent_at")
-        if not isinstance(sent_at, str):
+        event_start = record.get("event_start")
+        if not isinstance(event_start, str):
             continue
         try:
-            sent_at_dt = _parse_datetime(sent_at)
+            event_start_dt = _parse_datetime(event_start)
         except ValueError:
             continue
-        if now - sent_at_dt <= ttl:
+        if now <= event_start_dt + timedelta(minutes=60):
             active_records[dedup_key] = record
     return active_records
+
+
+def _build_record(item: object, status: str, recorded_at: datetime) -> dict[str, Any]:
+    return {
+        "event_id": _get_event_id(item),
+        "status": status,
+        "sent_at": recorded_at.isoformat(),
+        "event_start": _get_event_start(item).isoformat(),
+    }
 
 
 def _current_time_kst() -> datetime:
@@ -166,3 +172,21 @@ def _get_departure_time(item: object) -> datetime:
         return _ensure_kst(planned_departure)
 
     raise RuntimeError("Dedup item does not contain a departure_time")
+
+
+def _get_event_start(item: object) -> datetime:
+    direct_event_start = getattr(item, "event_start", None)
+    if isinstance(direct_event_start, datetime):
+        return _ensure_kst(direct_event_start)
+
+    plan = getattr(item, "plan", None)
+    planned_event_start = getattr(plan, "event_start", None)
+    if isinstance(planned_event_start, datetime):
+        return _ensure_kst(planned_event_start)
+
+    event = getattr(item, "event", None)
+    nested_event_start = getattr(event, "start_time", None)
+    if isinstance(nested_event_start, datetime):
+        return _ensure_kst(nested_event_start)
+
+    raise RuntimeError("Dedup item does not contain an event_start")

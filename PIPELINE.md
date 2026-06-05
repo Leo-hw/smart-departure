@@ -16,9 +16,9 @@
 | 5 | T-005 | 🟢 DONE | 알림 채널 라우팅 + 전송 |
 | 6 | T-006 | 🟢 DONE | 중복 알림 방지 (dedup) |
 | 7 | T-007 | 🟢 DONE | 알림 스케줄링 재설계 + 배포 (Oracle/GHA) |
-| 8 | T-008 | 🟡 READY | 카카오 Maps 자동차 길찾기 |
-| 9 | T-010 | 🟡 READY | 견고성 + 놓친 알림 catch-up |
-| 10 | T-009 | 🚧 BLOCKED:T-010 | occasion별 준비 단계 알림 |
+| 8 | T-008 | 🟢 DONE | 카카오 Maps 자동차 길찾기 |
+| 9 | T-010 | 🟢 DONE | 견고성 + 놓친 알림 catch-up |
+| 10 | T-009 | 🟡 READY | occasion별 준비 단계 알림 |
 
 **파이프라인 완료 기준**: T-008 + T-010 + T-009 완료
 
@@ -42,9 +42,9 @@
 | T-005 | 알림 채널 라우팅 + 전송 | Codex | DONE | T-004 |
 | T-006 | 중복 알림 방지 (dedup) | Codex | DONE | T-005 |
 | T-007 | 알림 스케줄링 재설계 + 배포 | Codex | DONE | T-006 |
-| T-008 | 카카오 Maps 자동차 길찾기 | Codex | READY | T-007 |
-| T-010 | 견고성 + 놓친 알림 catch-up | Codex | READY | T-007 |
-| T-009 | occasion별 준비 단계 알림 | Codex | BLOCKED:T-010 | T-010 |
+| T-008 | 카카오 Maps 자동차 길찾기 | Codex | DONE | T-007 |
+| T-010 | 견고성 + 놓친 알림 catch-up | Codex | DONE | T-007 |
+| T-009 | occasion별 준비 단계 알림 | Codex | READY | T-010 |
 <!-- QUEUE:END -->
 
 ---

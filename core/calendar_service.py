@@ -15,6 +15,8 @@ from shared.config.runtime_config import load_settings
 KST = ZoneInfo("Asia/Seoul")
 SCOPES = ("https://www.googleapis.com/auth/calendar.readonly",)
 ALLOWED_TRANSPORT_OVERRIDES = {"transit", "driving", "walking"}
+DEFAULT_CALENDAR_TIMEOUT_SECONDS = 10
+CALENDAR_API_RETRIES = 3
 
 
 @dataclass(frozen=True)
@@ -55,7 +57,7 @@ def get_upcoming_events(lookahead_hours: int | None = None) -> list[CalendarEven
                 orderBy="startTime",
                 timeZone="Asia/Seoul",
             )
-            .execute()
+            .execute(num_retries=CALENDAR_API_RETRIES)
         )
 
         for item in response.get("items", []):
@@ -80,6 +82,8 @@ def list_upcoming_events() -> list[CalendarEvent]:
 
 def _build_calendar_service():
     try:
+        import httplib2
+        from google_auth_httplib2 import AuthorizedHttp
         from google.oauth2 import service_account
         from googleapiclient.discovery import build
     except ModuleNotFoundError as exc:  # pragma: no cover - import guard
@@ -91,7 +95,25 @@ def _build_calendar_service():
 
     credentials_info = json.loads(service_account_json)
     credentials = service_account.Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
-    return build("calendar", "v3", credentials=credentials, cache_discovery=False)
+    timeout_seconds = _calendar_timeout_seconds()
+    authorized_http = AuthorizedHttp(
+        credentials,
+        http=httplib2.Http(timeout=timeout_seconds),
+    )
+    return build("calendar", "v3", http=authorized_http, cache_discovery=False)
+
+
+def _calendar_timeout_seconds() -> int:
+    raw_value = os.environ.get("GOOGLE_CALENDAR_TIMEOUT_SECONDS")
+    if not raw_value:
+        return DEFAULT_CALENDAR_TIMEOUT_SECONDS
+    try:
+        timeout_seconds = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError("GOOGLE_CALENDAR_TIMEOUT_SECONDS must be an integer") from exc
+    if timeout_seconds <= 0:
+        raise RuntimeError("GOOGLE_CALENDAR_TIMEOUT_SECONDS must be greater than zero")
+    return timeout_seconds
 
 
 def _parse_calendar_ids(raw_value: str | None) -> list[str]:

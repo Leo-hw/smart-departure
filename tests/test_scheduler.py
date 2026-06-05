@@ -10,7 +10,15 @@ from zoneinfo import ZoneInfo
 
 from core.calendar_service import CalendarEvent
 from core.departure_engine import DepartureDecision
-from core.scheduler import SchedulePlan, build_daily_plans, get_due_alerts, load_or_build_daily_schedule
+from core.scheduler import (
+    SchedulePlan,
+    ScheduledAlert,
+    build_daily_plans,
+    classify_alert,
+    get_due_alerts,
+    load_or_build_daily_schedule,
+    select_latest_prep_alerts,
+)
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -51,7 +59,58 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(plans[0].prep_alert_time, datetime(2026, 4, 19, 13, 15, tzinfo=KST))
 
     def test_get_due_alerts_returns_prep_and_departure(self):
-        plan = SchedulePlan(
+        plan = self._make_plan()
+
+        prep_due = get_due_alerts([plan], self.settings, now=datetime(2026, 4, 19, 13, 10, tzinfo=KST))
+        departure_due = get_due_alerts([plan], self.settings, now=datetime(2026, 4, 19, 14, 20, tzinfo=KST))
+
+        self.assertEqual([item.alert_type for item in prep_due], ["prep"])
+        self.assertEqual([item.alert_type for item in departure_due], ["departure"])
+
+    def test_classify_alert_on_time_catch_up_and_expired(self):
+        plan = self._make_plan()
+        prep = ScheduledAlert("prep", plan.prep_alert_time, plan)
+
+        self.assertEqual(
+            classify_alert(prep, datetime(2026, 4, 19, 13, 10, tzinfo=KST), self.settings),
+            "on_time",
+        )
+        self.assertEqual(
+            classify_alert(prep, datetime(2026, 4, 19, 13, 40, tzinfo=KST), self.settings),
+            "catch_up",
+        )
+        self.assertEqual(
+            classify_alert(prep, datetime(2026, 4, 19, 14, 16, tzinfo=KST), self.settings),
+            "expired",
+        )
+
+    def test_select_latest_prep_alert_seals_older_stages(self):
+        plan = self._make_plan()
+        now = datetime(2026, 4, 19, 13, 50, tzinfo=KST)
+        alerts = [
+            ScheduledAlert(
+                "prep",
+                datetime(2026, 4, 19, 12, 45, tzinfo=KST),
+                plan,
+                classification="catch_up",
+                evaluated_at=now,
+            ),
+            ScheduledAlert(
+                "prep",
+                datetime(2026, 4, 19, 13, 30, tzinfo=KST),
+                plan,
+                classification="catch_up",
+                evaluated_at=now,
+            ),
+        ]
+
+        selected, sealed = select_latest_prep_alerts(alerts, now=now)
+
+        self.assertEqual([item.alert_time for item in selected], [alerts[1].alert_time])
+        self.assertEqual([item.alert_time for item in sealed], [alerts[0].alert_time])
+
+    def _make_plan(self):
+        return SchedulePlan(
             event_id="event-1",
             summary="스터디",
             location="강남",
@@ -64,12 +123,6 @@ class SchedulerTests(unittest.TestCase):
             provider="google",
             buffer_minutes=10,
         )
-
-        prep_due = get_due_alerts([plan], self.settings, now=datetime(2026, 4, 19, 13, 10, tzinfo=KST))
-        departure_due = get_due_alerts([plan], self.settings, now=datetime(2026, 4, 19, 14, 20, tzinfo=KST))
-
-        self.assertEqual([item.alert_type for item in prep_due], ["prep"])
-        self.assertEqual([item.alert_type for item in departure_due], ["departure"])
 
     def test_load_or_build_daily_schedule_reuses_today_snapshot(self):
         with tempfile.TemporaryDirectory() as tempdir:

@@ -36,6 +36,8 @@ class ScheduledAlert:
     alert_type: str
     alert_time: datetime
     plan: SchedulePlan
+    classification: str = "on_time"
+    evaluated_at: datetime | None = None
 
     @property
     def dedup_key(self) -> str:
@@ -44,6 +46,10 @@ class ScheduledAlert:
     @property
     def event_id(self) -> str:
         return self.plan.event_id
+
+    @property
+    def is_late(self) -> bool:
+        return self.classification == "catch_up"
 
 
 def load_or_build_daily_schedule(
@@ -104,22 +110,116 @@ def get_due_alerts(
     settings: dict[str, Any],
     now: datetime | None = None,
 ) -> list[ScheduledAlert]:
-    """Return prep/departure alerts due within the current alert window."""
-    current_time = _ensure_kst(now or _current_time_kst())
-    alert_window_minutes = int(settings.get("schedule", {}).get("alert_window_minutes", 0))
-    window_delta = timedelta(minutes=alert_window_minutes)
+    """Return deliverable alerts, keeping only the latest missed prep stage."""
+    candidates = get_alert_candidates(plans, settings=settings, now=now)
+    selected, _ = select_latest_prep_alerts(candidates, now=now)
+    return selected
 
-    due_alerts: list[ScheduledAlert] = []
+
+def get_alert_candidates(
+    plans: Iterable[SchedulePlan],
+    settings: dict[str, Any],
+    now: datetime | None = None,
+) -> list[ScheduledAlert]:
+    """Return on-time and catch-up alert candidates before dedup selection."""
+    current_time = _ensure_kst(now or _current_time_kst())
+
+    candidates: list[ScheduledAlert] = []
     for plan in plans:
-        if plan.prep_alert_time is not None and abs(current_time - plan.prep_alert_time) <= window_delta:
-            due_alerts.append(ScheduledAlert(alert_type="prep", alert_time=plan.prep_alert_time, plan=plan))
-        if abs(current_time - plan.departure_time) <= window_delta:
-            due_alerts.append(
-                ScheduledAlert(alert_type="departure", alert_time=plan.departure_time, plan=plan)
+        for prep_alert_time in _get_prep_alert_times(plan):
+            alert = ScheduledAlert(alert_type="prep", alert_time=prep_alert_time, plan=plan)
+            classification = classify_alert(alert, current_time, settings)
+            if classification in {"on_time", "catch_up"}:
+                candidates.append(
+                    ScheduledAlert(
+                        alert_type=alert.alert_type,
+                        alert_time=alert.alert_time,
+                        plan=alert.plan,
+                        classification=classification,
+                        evaluated_at=current_time,
+                    )
+                )
+
+        alert = ScheduledAlert(alert_type="departure", alert_time=plan.departure_time, plan=plan)
+        classification = classify_alert(alert, current_time, settings)
+        if classification in {"on_time", "catch_up"}:
+            candidates.append(
+                ScheduledAlert(
+                    alert_type=alert.alert_type,
+                    alert_time=alert.alert_time,
+                    plan=alert.plan,
+                    classification=classification,
+                    evaluated_at=current_time,
+                )
             )
 
-    due_alerts.sort(key=lambda item: item.alert_time)
-    return due_alerts
+    candidates.sort(key=lambda item: item.alert_time)
+    return candidates
+
+
+def classify_alert(
+    alert: ScheduledAlert,
+    now: datetime,
+    settings: dict[str, Any],
+) -> str:
+    """Classify an alert relative to its on-time window and catch-up expiry."""
+    current_time = _ensure_kst(now)
+    target_time = _ensure_kst(alert.alert_time)
+    window_minutes = int(settings.get("schedule", {}).get("alert_window_minutes", 0))
+    window_delta = timedelta(minutes=window_minutes)
+    on_time_start = target_time - window_delta
+    on_time_end = target_time + window_delta
+    expiry = (
+        alert.plan.departure_time
+        if alert.alert_type == "prep"
+        else alert.plan.departure_time + timedelta(minutes=30)
+    )
+
+    if current_time < on_time_start:
+        return "pending"
+    if current_time <= on_time_end:
+        return "on_time"
+    if current_time <= expiry:
+        return "catch_up"
+    return "expired"
+
+
+def select_latest_prep_alerts(
+    alerts: Iterable[ScheduledAlert],
+    now: datetime | None = None,
+) -> tuple[list[ScheduledAlert], list[ScheduledAlert]]:
+    """Select the latest eligible prep per event and seal older prep stages."""
+    current_time = _ensure_kst(now or _current_time_kst())
+    alerts_list = list(alerts)
+    selected: list[ScheduledAlert] = [
+        alert
+        for alert in alerts_list
+        if alert.alert_type != "prep" or alert.alert_time > current_time
+    ]
+    sealed: list[ScheduledAlert] = []
+
+    prep_by_event: dict[str, list[ScheduledAlert]] = {}
+    for alert in alerts_list:
+        if alert.alert_type == "prep" and alert.alert_time <= current_time:
+            prep_by_event.setdefault(alert.event_id, []).append(alert)
+
+    for event_alerts in prep_by_event.values():
+        latest = max(event_alerts, key=lambda item: item.alert_time)
+        selected.append(latest)
+        sealed.extend(alert for alert in event_alerts if alert is not latest)
+
+    selected.sort(key=lambda item: item.alert_time)
+    sealed.sort(key=lambda item: item.alert_time)
+    return selected, sealed
+
+
+def _get_prep_alert_times(plan: SchedulePlan) -> list[datetime]:
+    raw_times = getattr(plan, "prep_alert_times", None)
+    if raw_times is not None:
+        return sorted(
+            [_ensure_kst(value) for value in raw_times if isinstance(value, datetime)]
+        )
+    return [plan.prep_alert_time] if plan.prep_alert_time is not None else []
 
 
 def _get_today_events(current_time: datetime) -> list[CalendarEvent]:
