@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from core import calendar_service
@@ -10,8 +11,10 @@ from core import calendar_service
 class _FakeRequest:
     def __init__(self, payload: dict):
         self._payload = payload
+        self.num_retries = None
 
-    def execute(self):
+    def execute(self, num_retries=0):
+        self.num_retries = num_retries
         return self._payload
 
 
@@ -19,10 +22,13 @@ class _FakeEventsResource:
     def __init__(self, responses: dict[str, dict]):
         self.responses = responses
         self.calls: list[dict] = []
+        self.requests: list[_FakeRequest] = []
 
     def list(self, **kwargs):
         self.calls.append(kwargs)
-        return _FakeRequest(self.responses.get(kwargs["calendarId"], {"items": []}))
+        request = _FakeRequest(self.responses.get(kwargs["calendarId"], {"items": []}))
+        self.requests.append(request)
+        return request
 
 
 class _FakeService:
@@ -127,6 +133,72 @@ class CalendarServiceTests(unittest.TestCase):
         self.assertTrue(all(call["singleEvents"] is True for call in calls))
         self.assertTrue(all(call["orderBy"] == "startTime" for call in calls))
         self.assertTrue(all(call["timeZone"] == "Asia/Seoul" for call in calls))
+        self.assertTrue(
+            all(
+                request.num_retries == calendar_service.CALENDAR_API_RETRIES
+                for request in fake_service.events().requests
+            )
+        )
+
+    def test_calendar_request_retries_transient_failures_then_succeeds(self):
+        class RetryRequest:
+            def __init__(self):
+                self.attempts = 0
+                self.num_retries = None
+
+            def execute(self, num_retries=0):
+                self.num_retries = num_retries
+                while True:
+                    self.attempts += 1
+                    if self.attempts <= 2 and self.attempts <= num_retries:
+                        continue
+                    if self.attempts <= 2:
+                        raise TimeoutError("temporary timeout")
+                    return {
+                        "items": [
+                            {
+                                "id": "event-retried",
+                                "summary": "Retried event",
+                                "location": "Gangnam",
+                                "start": {"dateTime": "2026-04-15T00:30:00Z"},
+                            }
+                        ]
+                    }
+
+        request = RetryRequest()
+
+        class RetryEvents:
+            def list(self, **kwargs):
+                return request
+
+        class RetryService:
+            def events(self):
+                return RetryEvents()
+
+        with patch.dict(
+            calendar_service.os.environ,
+            {
+                "GOOGLE_SERVICE_ACCOUNT_JSON": '{"type": "service_account"}',
+                "GOOGLE_CALENDAR_IDS": "calendar-a",
+            },
+        ), patch.object(
+            calendar_service,
+            "_current_time_kst",
+            return_value=datetime(2026, 4, 15, 9, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+        ), patch.object(
+            calendar_service,
+            "_build_calendar_service",
+            return_value=RetryService(),
+        ), patch.object(
+            calendar_service,
+            "load_settings",
+            return_value=self.settings,
+        ):
+            events = calendar_service.get_upcoming_events()
+
+        self.assertEqual([event.event_id for event in events], ["event-retried"])
+        self.assertEqual(request.num_retries, 3)
+        self.assertEqual(request.attempts, 3)
 
     def test_transport_override_helper_accepts_only_allowed_values(self):
         self.assertEqual(calendar_service._parse_transport_override("transport: transit"), "transit")

@@ -8,7 +8,12 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from core.departure_engine import DepartureDecision
-from core.notifier import format_departure_message, format_scheduled_alert_message, send_notifications
+from core.notifier import (
+    format_departure_message,
+    format_scheduled_alert_message,
+    send_failure_notification,
+    send_notifications,
+)
 from core.calendar_service import CalendarEvent
 from core.scheduler import SchedulePlan, ScheduledAlert
 
@@ -79,6 +84,32 @@ class NotifierTests(unittest.TestCase):
         self.assertIn("출발할 시간", departure_message)
         self.assertIn("강남구 역삼동 OO카페", departure_message)
         self.assertIn("경로 요약", departure_message)
+
+    def test_format_scheduled_alert_message_marks_catch_up(self):
+        plan = SchedulePlan(
+            event_id="event-1",
+            summary="스터디 모임",
+            location="강남",
+            event_start=datetime(2026, 4, 16, 15, 0, tzinfo=KST),
+            travel_minutes=35,
+            is_estimated=False,
+            departure_time=datetime(2026, 4, 16, 14, 15, tzinfo=KST),
+            prep_alert_time=datetime(2026, 4, 16, 13, 15, tzinfo=KST),
+            transport_mode="transit",
+            provider="google",
+            buffer_minutes=10,
+        )
+        alert = ScheduledAlert(
+            alert_type="prep",
+            alert_time=plan.prep_alert_time,
+            plan=plan,
+            classification="catch_up",
+            evaluated_at=datetime(2026, 4, 16, 13, 40, tzinfo=KST),
+        )
+
+        message = format_scheduled_alert_message(alert)
+
+        self.assertIn("⚠️ 늦었어요 — 원래 2026-04-16 13:15 예정, 지금 2026-04-16 13:40", message)
 
     def test_send_notifications_posts_to_enabled_channels(self):
         settings = {
@@ -159,6 +190,31 @@ class NotifierTests(unittest.TestCase):
         self.assertEqual(len(deliveries), 1)
         self.assertFalse(deliveries[0].success)
         self.assertIn("Unsupported", deliveries[0].error)
+
+    def test_send_failure_notification_posts_directly_to_discord(self):
+        requests: list[object] = []
+
+        def fake_urlopen(request, timeout=10):
+            requests.append(request)
+            return _FakeResponse()
+
+        with patch.dict(
+            os.environ,
+            {"DISCORD_WEBHOOK_URL": "https://discord.test/webhook"},
+            clear=False,
+        ), patch(
+            "core.notifier.urllib.request.urlopen",
+            side_effect=fake_urlopen,
+        ):
+            delivery = send_failure_notification(RuntimeError("calendar timed out"))
+
+        self.assertTrue(delivery.success)
+        self.assertEqual(len(requests), 1)
+        payload = json.loads(requests[0].data.decode("utf-8"))
+        self.assertEqual(
+            payload["content"],
+            "[smart-departure] 실행 실패: calendar timed out",
+        )
 
 
 if __name__ == "__main__":
