@@ -2,6 +2,12 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### T-008, T-010 병렬 구현 완료
+- 자동차 이동 시 카카오 주소 검색 및 길찾기 API를 사용하고, 실패 시 기존 캐시와 30분 추정값으로 fallback
+- Google Calendar 호출에 10초 timeout과 3회 재시도를 적용하고 실행 실패 시 Discord 오류 알림 추가
+- 놓친 준비/출발 알림의 catch-up 판정, 늦음 표기, 다중 준비 알림 봉인 및 `skipped` dedup 기록 구현
+- GitHub Actions에서 `.runtime/`을 롤링 cache로 보존하고 dedup 만료 기준을 일정 시작 60분 후로 변경
+
 ### T-007 스케줄링 재설계 완료
 - `core/scheduler.py`에 당일 계획 생성, `.runtime/schedule_today.json` 저장, due alert 추출 로직 추가
 - `main.py`를 스케줄 계획 재사용 구조로 전환하고 prep/departure 알림 흐름을 연결

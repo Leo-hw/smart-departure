@@ -9,6 +9,7 @@ Google Calendar 일정과 지도 API를 기반으로 당일 알림 계획을 계
   - `GOOGLE_SERVICE_ACCOUNT_JSON`
   - `GOOGLE_CALENDAR_IDS`
   - `GOOGLE_MAPS_API_KEY`
+  - 자동차 길찾기 사용 시: `KAKAO_REST_API_KEY`
   - `HOME_ADDRESS`
 - 채널별 환경변수
   - Discord 사용 시: `DISCORD_WEBHOOK_URL`
@@ -43,6 +44,7 @@ pip install -r requirements.txt
 export GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account"}'
 export GOOGLE_CALENDAR_IDS='primary'
 export GOOGLE_MAPS_API_KEY='your-google-maps-key'
+export KAKAO_REST_API_KEY='your-kakao-rest-api-key'
 export DISCORD_WEBHOOK_URL='your-discord-webhook-url'
 export HOME_ADDRESS='서울시 강남구 테헤란로 123'
 python3 main.py
@@ -68,8 +70,8 @@ export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 ## Dedup
 
 - 전송 성공한 알림은 `.runtime/sent_alerts.json`에 기록됩니다.
-- 같은 알림 키는 `schedule.dedup_ttl_minutes` 동안 다시 전송하지 않습니다.
-- TTL이 지난 기록은 자동으로 정리됩니다.
+- 같은 알림 키는 다시 전송하지 않으며, 의도적으로 봉인한 준비 알림도 `skipped`로 기록합니다.
+- 일정 시작 60분 후에는 해당 dedup 기록을 자동으로 정리합니다.
 
 ## Deployment
 
@@ -84,3 +86,4 @@ export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 
 - 워크플로우는 [.github/workflows/departure_check.yml](./.github/workflows/departure_check.yml)에 추가되어 있습니다.
 - GitHub Secrets에 환경변수를 넣고 30분 간격 스케줄 또는 수동 실행으로 사용할 수 있습니다.
+- `.runtime/`은 Actions cache로 다음 실행에 복원되어 dedup 상태를 유지합니다.
