@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
@@ -56,14 +56,17 @@ def load_or_build_daily_schedule(
     settings: dict[str, Any],
     now: datetime | None = None,
 ) -> list[SchedulePlan]:
-    """Load today's plans from cache or rebuild them."""
+    """Rebuild today's plans unless a configured snapshot TTL allows reuse."""
     current_time = _ensure_kst(now or _current_time_kst())
+    snapshot_ttl_minutes = int(
+        settings.get("schedule", {}).get("snapshot_ttl_minutes", 0)
+    )
     snapshot = _load_schedule_snapshot()
-    if snapshot.get("date") == current_time.date().isoformat():
+    if _snapshot_is_fresh(snapshot, current_time, snapshot_ttl_minutes):
         return _deserialize_plans(snapshot.get("plans", []))
 
     plans = build_daily_plans(settings, now=current_time)
-    _save_schedule_snapshot(current_time.date(), plans)
+    _save_schedule_snapshot(current_time, plans)
     return plans
 
 
@@ -240,10 +243,32 @@ def _load_schedule_snapshot() -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
-def _save_schedule_snapshot(schedule_date: date, plans: list[SchedulePlan]) -> None:
+def _snapshot_is_fresh(
+    snapshot: dict[str, Any],
+    now: datetime,
+    ttl_minutes: int,
+) -> bool:
+    if ttl_minutes <= 0 or snapshot.get("date") != now.date().isoformat():
+        return False
+
+    built_at = snapshot.get("built_at")
+    if not isinstance(built_at, str):
+        return False
+
+    try:
+        built_at_time = _parse_datetime(built_at)
+    except ValueError:
+        return False
+
+    age = now - built_at_time
+    return timedelta(0) <= age <= timedelta(minutes=ttl_minutes)
+
+
+def _save_schedule_snapshot(built_at: datetime, plans: list[SchedulePlan]) -> None:
     SCHEDULE_TODAY_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "date": schedule_date.isoformat(),
+        "date": built_at.date().isoformat(),
+        "built_at": built_at.isoformat(),
         "plans": [_serialize_plan(plan) for plan in plans],
     }
     tmp_path = SCHEDULE_TODAY_PATH.with_suffix(".json.tmp")

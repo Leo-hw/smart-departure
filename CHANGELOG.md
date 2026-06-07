@@ -2,6 +2,11 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### T-011 당일 일정 스냅샷 staleness 핫픽스 완료
+- 기본 설정에서 매 실행 Google Calendar를 재조회해 당일 중간에 추가된 일정이 다음 실행에 반영되도록 수정
+- 스냅샷에 `built_at`을 저장하고 선택적 `snapshot_ttl_minutes` 내에서만 재사용하도록 변경
+- 스케줄 재빌드 후에도 기존 `sent_alerts.json` dedup 상태가 유지되는 회귀 테스트 추가
+
 ### T-008, T-010 병렬 구현 완료
 - 자동차 이동 시 카카오 주소 검색 및 길찾기 API를 사용하고, 실패 시 기존 캐시와 30분 추정값으로 fallback
 - Google Calendar 호출에 10초 timeout과 3회 재시도를 적용하고 실행 실패 시 Discord 오류 알림 추가

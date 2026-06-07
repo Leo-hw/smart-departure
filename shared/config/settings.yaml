@@ -18,6 +18,7 @@ schedule:
   lookahead_hours: 3
   alert_window_minutes: 15
   prep_minutes: 60
+  snapshot_ttl_minutes: 0
   dedup_ttl_minutes: 60
 
 notification:

@@ -18,8 +18,8 @@
 | 7 | T-007 | 🟢 DONE | 알림 스케줄링 재설계 + 배포 (Oracle/GHA) |
 | 8 | T-008 | 🟢 DONE | 카카오 Maps 자동차 길찾기 |
 | 9 | T-010 | 🟢 DONE | 견고성 + 놓친 알림 catch-up |
-| 10 | T-011 | 🔥 READY | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) |
-| 11 | T-009 | 🚧 BLOCKED:T-011 | occasion별 준비 단계 알림 |
+| 10 | T-011 | 🟢 DONE | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) |
+| 11 | T-009 | 🟡 READY | occasion별 준비 단계 알림 |
 
 **파이프라인 완료 기준**: T-011 + T-009 완료
 
@@ -44,8 +44,8 @@
 | T-007 | 알림 스케줄링 재설계 + 배포 | Codex | DONE | T-006 |
 | T-008 | 카카오 Maps 자동차 길찾기 | Codex | DONE | T-007 |
 | T-010 | 견고성 + 놓친 알림 catch-up | Codex | DONE | T-007 |
-| T-011 | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) | Codex | READY | T-010 |
-| T-009 | occasion별 준비 단계 알림 | Codex | BLOCKED:T-011 | T-011 |
+| T-011 | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) | Codex | DONE | T-010 |
+| T-009 | occasion별 준비 단계 알림 | Codex | READY | T-011 |
 <!-- QUEUE:END -->
 
 ---
