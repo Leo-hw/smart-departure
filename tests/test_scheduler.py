@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from core.calendar_service import CalendarEvent
+from core.dedup import filter_pending_decisions
 from core.departure_engine import DepartureDecision
 from core.scheduler import (
     SchedulePlan,
@@ -124,28 +125,47 @@ class SchedulerTests(unittest.TestCase):
             buffer_minutes=10,
         )
 
-    def test_load_or_build_daily_schedule_reuses_today_snapshot(self):
+    def test_load_or_build_daily_schedule_rebuilds_today_snapshot_by_default(self):
         with tempfile.TemporaryDirectory() as tempdir:
             schedule_path = Path(tempdir) / "schedule_today.json"
             schedule_path.write_text(
                 json.dumps(
                     {
                         "date": "2026-04-19",
-                        "plans": [
-                            {
-                                "event_id": "event-1",
-                                "summary": "스터디",
-                                "location": "강남",
-                                "event_start": "2026-04-19T15:00:00+09:00",
-                                "travel_minutes": 35,
-                                "is_estimated": False,
-                                "departure_time": "2026-04-19T14:15:00+09:00",
-                                "prep_alert_time": "2026-04-19T13:15:00+09:00",
-                                "transport_mode": "transit",
-                                "provider": "google",
-                                "buffer_minutes": 10,
-                            }
-                        ],
+                        "built_at": "2026-04-19T08:55:00+09:00",
+                        "plans": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            new_plan = self._make_plan()
+
+            with patch("core.scheduler.SCHEDULE_TODAY_PATH", schedule_path), patch(
+                "core.scheduler.build_daily_plans",
+                return_value=[new_plan],
+            ) as mock_build:
+                plans = load_or_build_daily_schedule(self.settings, now=self.now)
+
+        self.assertEqual(len(plans), 1)
+        self.assertEqual(plans[0].event_id, "event-1")
+        mock_build.assert_called_once_with(self.settings, now=self.now)
+
+    def test_load_or_build_daily_schedule_reuses_fresh_snapshot_when_ttl_enabled(self):
+        settings = {
+            **self.settings,
+            "schedule": {
+                **self.settings["schedule"],
+                "snapshot_ttl_minutes": 10,
+            },
+        }
+        with tempfile.TemporaryDirectory() as tempdir:
+            schedule_path = Path(tempdir) / "schedule_today.json"
+            schedule_path.write_text(
+                json.dumps(
+                    {
+                        "date": self.now.date().isoformat(),
+                        "built_at": (self.now - timedelta(minutes=5)).isoformat(),
+                        "plans": [self._serialized_plan()],
                     }
                 ),
                 encoding="utf-8",
@@ -154,7 +174,63 @@ class SchedulerTests(unittest.TestCase):
             with patch("core.scheduler.SCHEDULE_TODAY_PATH", schedule_path), patch(
                 "core.scheduler.build_daily_plans"
             ) as mock_build:
-                plans = load_or_build_daily_schedule(self.settings, now=self.now)
+                plans = load_or_build_daily_schedule(settings, now=self.now)
 
-        self.assertEqual(len(plans), 1)
+        self.assertEqual([plan.event_id for plan in plans], ["event-1"])
         mock_build.assert_not_called()
+
+    def test_schedule_rebuild_does_not_modify_dedup_state(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            schedule_path = Path(tempdir) / "schedule_today.json"
+            sent_alerts_path = Path(tempdir) / "sent_alerts.json"
+            plan = self._make_plan()
+            departure_alert = ScheduledAlert(
+                alert_type="departure",
+                alert_time=plan.departure_time,
+                plan=plan,
+            )
+            original_dedup = {
+                departure_alert.dedup_key: {
+                    "status": "sent",
+                    "sent_at": "2026-04-19T14:15:00+09:00",
+                    "event_start": plan.event_start.isoformat(),
+                }
+            }
+            sent_alerts_path.write_text(
+                json.dumps(original_dedup),
+                encoding="utf-8",
+            )
+
+            with patch("core.scheduler.SCHEDULE_TODAY_PATH", schedule_path), patch(
+                "core.scheduler.build_daily_plans",
+                return_value=[plan],
+            ), patch("core.dedup.SENT_ALERTS_PATH", sent_alerts_path):
+                load_or_build_daily_schedule(self.settings, now=self.now)
+                pending, skipped = filter_pending_decisions(
+                    [departure_alert],
+                    self.settings,
+                    now=plan.departure_time,
+                )
+
+            persisted_dedup = json.loads(sent_alerts_path.read_text(encoding="utf-8"))
+            snapshot = json.loads(schedule_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(persisted_dedup, original_dedup)
+        self.assertEqual(snapshot["built_at"], self.now.isoformat())
+        self.assertEqual(pending, [])
+        self.assertEqual(skipped, [departure_alert])
+
+    def _serialized_plan(self):
+        return {
+            "event_id": "event-1",
+            "summary": "스터디",
+            "location": "강남",
+            "event_start": "2026-04-19T15:00:00+09:00",
+            "travel_minutes": 35,
+            "is_estimated": False,
+            "departure_time": "2026-04-19T14:15:00+09:00",
+            "prep_alert_time": "2026-04-19T13:15:00+09:00",
+            "transport_mode": "transit",
+            "provider": "google",
+            "buffer_minutes": 10,
+        }
