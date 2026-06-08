@@ -2,6 +2,11 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### T-012 GHA 실행 신뢰성 구현 완료, 운영 검증 중
+- GitHub Actions 예약 실행을 5분 간격 요청으로 변경하고 pip 캐시와 concurrency 가드 추가
+- 출발 catch-up 만료를 `departure_catchup_minutes` 설정으로 분리하고 기본값을 45분으로 확대
+- 워크플로우 구성과 준비/출발 catch-up 경계를 검증하는 단위 테스트 추가
+
 ### T-011 당일 일정 스냅샷 staleness 핫픽스 완료
 - 기본 설정에서 매 실행 Google Calendar를 재조회해 당일 중간에 추가된 일정이 다음 실행에 반영되도록 수정
 - 스냅샷에 `built_at`을 저장하고 선택적 `snapshot_ttl_minutes` 내에서만 재사용하도록 변경

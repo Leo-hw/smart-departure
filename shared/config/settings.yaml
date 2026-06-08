@@ -17,6 +17,7 @@ schedule:
   run_mode: "check"
   lookahead_hours: 3
   alert_window_minutes: 15
+  departure_catchup_minutes: 45
   prep_minutes: 60
   snapshot_ttl_minutes: 0
   dedup_ttl_minutes: 60

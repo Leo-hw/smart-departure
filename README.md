@@ -67,6 +67,7 @@ export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 - 기본값 `schedule.snapshot_ttl_minutes: 0`에서는 매 실행 캘린더를 다시 조회하고 계획을 재계산합니다.
 - TTL을 양수로 설정하면 같은 날짜의 신선한 스냅샷만 해당 시간 동안 재사용합니다.
 - 준비 알림은 `schedule.prep_minutes`, 출발 알림은 이동 시간과 버퍼 기준으로 계산됩니다.
+- 놓친 출발 알림은 기본적으로 `schedule.departure_catchup_minutes: 45`까지 catch-up합니다.
 
 ## Dedup
 
@@ -86,5 +87,6 @@ export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 ### GitHub Actions
 
 - 워크플로우는 [.github/workflows/departure_check.yml](./.github/workflows/departure_check.yml)에 추가되어 있습니다.
-- GitHub Secrets에 환경변수를 넣고 30분 간격 스케줄 또는 수동 실행으로 사용할 수 있습니다.
+- GitHub Secrets에 환경변수를 넣고 5분 간격 요청 스케줄 또는 수동 실행으로 사용할 수 있습니다.
+- 예약 실행은 GitHub Actions의 부하에 따라 지연되거나 일부 tick이 누락될 수 있습니다.
 - `.runtime/`은 Actions cache로 다음 실행에 복원되어 dedup 상태를 유지합니다.
