@@ -16,7 +16,7 @@
 | dedup 키와 레코드 해시화 | ✅ | 원문 event ID 필드 제거 |
 | 기존 평문 cache 마이그레이션 | ✅ | 로드 시 키 해시화 및 민감 필드 제거 |
 | 단위 및 회귀 테스트 | ✅ | 전체 48개 테스트 통과 |
-| 과거 Actions runs/caches purge | ⚠️ | 안전화 배포 직후 수행 예정 |
+| 과거 Actions runs/caches purge | ✅ | workflow runs 560개, caches 35개 삭제 후 잔존 0 확인 |
 | 재공개 실제 알림/로그 확인 | ⚠️ | 사용자 재공개 후 운영 검증 필요 |
 
 ## 원래 기획과 달라진 점
@@ -26,6 +26,7 @@
 ## 발생한 에러/이슈
 
 - 기존 평문 cache는 최초 로드 시 해시 형식으로 자동 변환되어 파일에 다시 저장됨
+- GitHub API purge 후 저장소 `private=true`, workflow runs 0개, Actions caches 0개 확인
 
 ## 다음 작업자에게 전달할 주의사항
 

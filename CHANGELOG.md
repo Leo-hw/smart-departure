@@ -6,6 +6,7 @@
 - 실행 로그에서 일정명·장소·원문 event ID를 제거하고 이벤트 식별자는 8자리 해시로 출력
 - 예외 및 전송 실패 로그를 오류 타입·상태 코드 수준으로 제한해 민감한 메시지와 응답 본문 제거
 - Actions cache를 해시 기반 `sent_alerts.json` 단일 파일로 축소하고 기존 평문 dedup 레코드 자동 마이그레이션 추가
+- 과거 Actions workflow runs 560개와 caches 35개를 삭제하고 잔존 수량 0 확인
 
 ### T-012 GHA 실행 신뢰성 구현 완료, 운영 검증 중
 - GitHub Actions 예약 실행을 5분 간격 요청으로 변경하고 pip 캐시와 concurrency 가드 추가
