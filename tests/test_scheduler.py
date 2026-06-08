@@ -85,6 +85,69 @@ class SchedulerTests(unittest.TestCase):
             "expired",
         )
 
+    def test_departure_catch_up_uses_default_45_minutes(self):
+        plan = self._make_plan()
+        departure = ScheduledAlert("departure", plan.departure_time, plan)
+
+        self.assertEqual(
+            classify_alert(
+                departure,
+                plan.departure_time + timedelta(minutes=40),
+                self.settings,
+            ),
+            "catch_up",
+        )
+        self.assertEqual(
+            classify_alert(
+                departure,
+                plan.departure_time + timedelta(minutes=46),
+                self.settings,
+            ),
+            "expired",
+        )
+
+    def test_departure_catch_up_respects_configured_minutes(self):
+        plan = self._make_plan()
+        departure = ScheduledAlert("departure", plan.departure_time, plan)
+        settings = {
+            "schedule": {
+                **self.settings["schedule"],
+                "departure_catchup_minutes": 60,
+            }
+        }
+
+        self.assertEqual(
+            classify_alert(
+                departure,
+                plan.departure_time + timedelta(minutes=50),
+                settings,
+            ),
+            "catch_up",
+        )
+
+    def test_prep_catch_up_still_expires_at_departure_time(self):
+        plan = self._make_plan()
+        prep = ScheduledAlert("prep", plan.prep_alert_time, plan)
+        settings = {
+            "schedule": {
+                **self.settings["schedule"],
+                "departure_catchup_minutes": 90,
+            }
+        }
+
+        self.assertEqual(
+            classify_alert(prep, plan.departure_time, settings),
+            "catch_up",
+        )
+        self.assertEqual(
+            classify_alert(
+                prep,
+                plan.departure_time + timedelta(minutes=1),
+                settings,
+            ),
+            "expired",
+        )
+
     def test_select_latest_prep_alert_seals_older_stages(self):
         plan = self._make_plan()
         now = datetime(2026, 4, 19, 13, 50, tzinfo=KST)

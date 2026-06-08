@@ -172,10 +172,13 @@ def classify_alert(
     window_delta = timedelta(minutes=window_minutes)
     on_time_start = target_time - window_delta
     on_time_end = target_time + window_delta
+    departure_catchup_minutes = int(
+        settings.get("schedule", {}).get("departure_catchup_minutes", 45)
+    )
     expiry = (
         alert.plan.departure_time
         if alert.alert_type == "prep"
-        else alert.plan.departure_time + timedelta(minutes=30)
+        else alert.plan.departure_time + timedelta(minutes=departure_catchup_minutes)
     )
 
     if current_time < on_time_start:
