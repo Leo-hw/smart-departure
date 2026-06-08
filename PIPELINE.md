@@ -20,14 +20,16 @@
 | 9 | T-010 | 🟢 DONE | 견고성 + 놓친 알림 catch-up |
 | 10 | T-011 | 🟢 DONE | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) |
 | 11 | T-012 | 🟠 VERIFY | GHA 실행 신뢰성 (빈도↑ + catch-up 보강) |
-| 12 | T-009 | 🚧 BLOCKED:T-012 | occasion별 준비 단계 알림 |
+| 12 | T-013 | 🔥 READY | public 안전화: 로그/캐시 민감정보 제거 |
+| 13 | T-009 | 🚧 BLOCKED:T-013 | occasion별 준비 단계 알림 |
 
-**파이프라인 완료 기준**: T-012 + T-009 완료
+**파이프라인 완료 기준**: T-012 + T-013 + T-009 완료
 
-> 🔥 T-012 긴급: GHA cron이 실측 ~85분 간격으로 누락돼 알림 안 옴. repo public 전환 완료로 고빈도 cron 가능해짐.
+> 🔥 T-013 긴급: public repo에서 일정명/장소가 Actions 로그·캐시로 노출 중. 마스킹 + 과거분 purge 필요.
+> 작업 중에는 임시 private 또는 워크플로우 비활성화로 누출 차단, 완료 후 재공개.
 >
-> **순서 규칙**: T-012 → T-009. 둘 다 `scheduler.py`·`settings.yaml`을 고치므로 동시 실행 금지.
-> T-009의 다단계 prep은 T-012로 신뢰성 잡힌 스케줄러 위에 얹는다.
+> **순서 규칙**: T-013(마스킹) → T-012 D검증 마무리(안전한 public 실행) → T-009.
+> T-012·T-013·T-009 모두 scheduler/main/dedup/settings를 건드리므로 순차 진행, 동시 금지.
 
 ---
 
@@ -47,7 +49,8 @@
 | T-010 | 견고성 + 놓친 알림 catch-up | Codex | DONE | T-007 |
 | T-011 | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) | Codex | DONE | T-010 |
 | T-012 | GHA 실행 신뢰성 (빈도↑ + catch-up 보강) | Codex | VERIFY | T-010, T-011 |
-| T-009 | occasion별 준비 단계 알림 | Codex | BLOCKED:T-012 | T-012 |
+| T-013 | public 안전화: 로그/캐시 민감정보 제거 | Codex | READY | T-012 |
+| T-009 | occasion별 준비 단계 알림 | Codex | BLOCKED:T-013 | T-013 |
 <!-- QUEUE:END -->
 
 ---
