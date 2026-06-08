@@ -213,8 +213,9 @@ class NotifierTests(unittest.TestCase):
         payload = json.loads(requests[0].data.decode("utf-8"))
         self.assertEqual(
             payload["content"],
-            "[smart-departure] 실행 실패: calendar timed out",
+            "[smart-departure] 실행 실패: RuntimeError",
         )
+        self.assertNotIn("calendar timed out", payload["content"])
 
 
 if __name__ == "__main__":

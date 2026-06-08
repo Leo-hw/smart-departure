@@ -25,7 +25,7 @@ jobs:
       - name: Restore runtime state
         uses: actions/cache@v4
         with:
-          path: .runtime
+          path: .runtime/sent_alerts.json
           key: runtime-${{ github.run_id }}
           restore-keys: |
             runtime-

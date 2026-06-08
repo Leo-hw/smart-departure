@@ -15,6 +15,7 @@ from core.dedup import (
     mark_successful_deliveries,
 )
 from core.departure_engine import DepartureDecision
+from core.privacy import short_id
 from core.scheduler import SchedulePlan, ScheduledAlert, select_latest_prep_alerts
 
 KST = ZoneInfo("Asia/Seoul")
@@ -49,7 +50,7 @@ class DedupTests(unittest.TestCase):
         self.sent_alerts_path.write_text(
             json.dumps(
                 {
-                    "event-1": {
+                    short_id("event-1"): {
                         "status": "sent",
                         "sent_at": (self.now - timedelta(minutes=15)).isoformat(),
                         "event_start": self.decision.event.start_time.isoformat(),
@@ -71,7 +72,7 @@ class DedupTests(unittest.TestCase):
         self.sent_alerts_path.write_text(
             json.dumps(
                 {
-                    "event-1": {
+                    short_id("event-1"): {
                         "status": "sent",
                         "sent_at": self.now.isoformat(),
                         "event_start": self.decision.event.start_time.isoformat(),
@@ -98,20 +99,59 @@ class DedupTests(unittest.TestCase):
             mark_successful_deliveries([self.decision], self.settings, now=self.now)
 
         persisted = json.loads(self.sent_alerts_path.read_text(encoding="utf-8"))
-        self.assertIn("event-1", persisted)
-        self.assertEqual(persisted["event-1"]["sent_at"], self.now.isoformat())
-        self.assertEqual(persisted["event-1"]["status"], "sent")
+        hashed_key = short_id("event-1")
+        self.assertIn(hashed_key, persisted)
+        self.assertEqual(persisted[hashed_key]["sent_at"], self.now.isoformat())
+        self.assertEqual(persisted[hashed_key]["status"], "sent")
         self.assertEqual(
-            persisted["event-1"]["event_start"],
+            persisted[hashed_key]["event_start"],
             self.decision.event.start_time.isoformat(),
         )
+        serialized = json.dumps(persisted, ensure_ascii=False)
+        self.assertNotIn("event-1", serialized)
+        self.assertNotIn("스터디 모임", serialized)
+        self.assertNotIn("강남구 역삼동 OO카페", serialized)
 
     def test_mark_skipped_deliveries_persists_skipped_status(self):
         with patch("core.dedup.SENT_ALERTS_PATH", self.sent_alerts_path):
             mark_skipped_deliveries([self.decision], self.settings, now=self.now)
 
         persisted = json.loads(self.sent_alerts_path.read_text(encoding="utf-8"))
-        self.assertEqual(persisted["event-1"]["status"], "skipped")
+        self.assertEqual(persisted[short_id("event-1")]["status"], "skipped")
+
+    def test_legacy_plaintext_key_is_migrated_to_hash(self):
+        self.sent_alerts_path.parent.mkdir(parents=True, exist_ok=True)
+        self.sent_alerts_path.write_text(
+            json.dumps(
+                {
+                    "event-1": {
+                        "event_id": "event-1",
+                        "summary": "스터디 모임",
+                        "location": "강남구 역삼동 OO카페",
+                        "status": "sent",
+                        "sent_at": self.now.isoformat(),
+                        "event_start": self.decision.event.start_time.isoformat(),
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        with patch("core.dedup.SENT_ALERTS_PATH", self.sent_alerts_path):
+            pending, skipped = filter_pending_decisions(
+                [self.decision],
+                self.settings,
+                now=self.now,
+            )
+
+        persisted = json.loads(self.sent_alerts_path.read_text(encoding="utf-8"))
+        self.assertEqual(pending, [])
+        self.assertEqual(skipped, [self.decision])
+        self.assertEqual(list(persisted), [short_id("event-1")])
+        serialized = json.dumps(persisted, ensure_ascii=False)
+        self.assertNotIn("event-1", serialized)
+        self.assertNotIn("스터디 모임", serialized)
+        self.assertNotIn("강남구 역삼동 OO카페", serialized)
 
     def test_older_missed_prep_is_persisted_as_skipped(self):
         plan = SchedulePlan(
@@ -148,9 +188,10 @@ class DedupTests(unittest.TestCase):
 
         persisted = json.loads(self.sent_alerts_path.read_text(encoding="utf-8"))
         self.assertEqual([item.dedup_key for item in selected], [latest.dedup_key])
-        self.assertEqual(persisted[older.dedup_key]["status"], "skipped")
+        hashed_key = short_id(older.dedup_key)
+        self.assertEqual(persisted[hashed_key]["status"], "skipped")
         self.assertEqual(
-            persisted[older.dedup_key]["event_start"],
+            persisted[hashed_key]["event_start"],
             plan.event_start.isoformat(),
         )
 

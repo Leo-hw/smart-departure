@@ -11,6 +11,7 @@ from core.dedup import (
     mark_successful_deliveries,
 )
 from core.notifier import send_failure_notification, send_notifications
+from core.privacy import safe_exception_label, short_id
 from core.scheduler import (
     get_alert_candidates,
     load_or_build_daily_schedule,
@@ -52,26 +53,30 @@ def main() -> int:
         if successful_alerts:
             mark_successful_deliveries(successful_alerts, settings=settings)
     except Exception as exc:  # pragma: no cover - CLI bootstrap path
-        print(f"[smart-departure] startup failed: {exc}", file=sys.stderr)
+        print(
+            "[smart-departure] startup failed: "
+            f"{safe_exception_label(exc)}",
+            file=sys.stderr,
+        )
         try:
             failure_delivery = send_failure_notification(exc, settings=settings)
             if not failure_delivery.success:
                 print(
                     "[smart-departure] failure notification failed: "
-                    f"{failure_delivery.error}",
+                    f"{failure_delivery.error or 'unknown error'}",
                     file=sys.stderr,
                 )
         except Exception as notification_exc:
             print(
                 "[smart-departure] failure notification failed: "
-                f"{notification_exc}",
+                f"{safe_exception_label(notification_exc)}",
                 file=sys.stderr,
             )
         return 1
 
     calendars = [item.strip() for item in env["GOOGLE_CALENDAR_IDS"].split(",") if item.strip()]
     print("[smart-departure] bootstrap ready")
-    print(f"Loaded settings from: {SETTINGS_PATH}")
+    print("Loaded settings from: shared/config/settings.yaml")
     print(f"Configured calendar IDs: {len(calendars)}")
     print(f"Default transport: {settings['user'].get('default_transport', 'transit')}")
     print(f"Today's plans: {len(plans)}")
@@ -79,17 +84,18 @@ def main() -> int:
         prep_time = plan.prep_alert_time.strftime("%Y-%m-%d %H:%M") if plan.prep_alert_time else "disabled"
         print(
             "[smart-departure] plan "
-            f"event_id={plan.event_id} summary={plan.summary!r} "
+            f"event_id={short_id(plan.event_id)} "
             f"start={plan.event_start.strftime('%Y-%m-%d %H:%M')} "
             f"prep={prep_time} "
             f"departure={plan.departure_time.strftime('%Y-%m-%d %H:%M')} "
-            f"travel={plan.travel_minutes}m estimated={plan.is_estimated}"
+            f"travel={plan.travel_minutes}m provider={plan.provider} "
+            f"estimated={plan.is_estimated}"
         )
     print(f"Due alerts: {len(pending_alerts)}")
     for alert in pending_alerts:
         print(
             "[smart-departure] due "
-            f"type={alert.alert_type} event_id={alert.event_id} "
+            f"type={alert.alert_type} event_id={short_id(alert.event_id)} "
             f"alert_time={alert.alert_time.strftime('%Y-%m-%d %H:%M')} "
             f"classification={alert.classification}"
         )
@@ -101,7 +107,8 @@ def main() -> int:
         for delivery in failed_deliveries:
             print(
                 f"[smart-departure] delivery failed: channel={delivery.channel} "
-                f"event_id={delivery.event_id} error={delivery.error}",
+                f"event_id={short_id(delivery.event_id)} "
+                f"error={delivery.error or 'unknown error'}",
                 file=sys.stderr,
             )
         return 1

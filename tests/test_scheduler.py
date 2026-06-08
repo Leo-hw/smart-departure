@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from core.calendar_service import CalendarEvent
 from core.dedup import filter_pending_decisions
 from core.departure_engine import DepartureDecision
+from core.privacy import short_id
 from core.scheduler import (
     SchedulePlan,
     ScheduledAlert,
@@ -278,7 +279,10 @@ class SchedulerTests(unittest.TestCase):
             persisted_dedup = json.loads(sent_alerts_path.read_text(encoding="utf-8"))
             snapshot = json.loads(schedule_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(persisted_dedup, original_dedup)
+        self.assertEqual(
+            persisted_dedup,
+            {short_id(departure_alert.dedup_key): original_dedup[departure_alert.dedup_key]},
+        )
         self.assertEqual(snapshot["built_at"], self.now.isoformat())
         self.assertEqual(pending, [])
         self.assertEqual(skipped, [departure_alert])

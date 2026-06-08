@@ -22,6 +22,12 @@ class WorkflowConfigTests(unittest.TestCase):
         self.assertIn("group: departure-check", workflow)
         self.assertIn("cancel-in-progress: false", workflow)
 
+    def test_runtime_cache_contains_only_hashed_dedup_state(self):
+        workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("path: .runtime/sent_alerts.json", workflow)
+        self.assertNotIn("path: .runtime\n", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
