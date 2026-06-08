@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
+from core.privacy import short_id
+
 KST = ZoneInfo("Asia/Seoul")
 SENT_ALERTS_PATH = Path(".runtime") / "sent_alerts.json"
+HASHED_KEY_PATTERN = re.compile(r"^[0-9a-f]{8}$")
 
 
 def filter_pending_decisions(
@@ -87,7 +91,24 @@ def _load_sent_alerts() -> dict[str, dict[str, Any]]:
     except (json.JSONDecodeError, OSError):
         return {}
 
-    return payload if isinstance(payload, dict) else {}
+    if not isinstance(payload, dict):
+        return {}
+
+    sanitized: dict[str, dict[str, Any]] = {}
+    for key, record in payload.items():
+        if not isinstance(key, str) or not isinstance(record, dict):
+            continue
+        persisted_key = (
+            key
+            if HASHED_KEY_PATTERN.fullmatch(key) and "event_id" not in record
+            else short_id(key)
+        )
+        sanitized[persisted_key] = {
+            field: value
+            for field, value in record.items()
+            if field not in {"event_id", "summary", "location"}
+        }
+    return sanitized
 
 
 def _save_sent_alerts(sent_alerts: dict[str, dict[str, Any]]) -> None:
@@ -120,7 +141,6 @@ def _prune_expired_records(
 
 def _build_record(item: object, status: str, recorded_at: datetime) -> dict[str, Any]:
     return {
-        "event_id": _get_event_id(item),
         "status": status,
         "sent_at": recorded_at.isoformat(),
         "event_start": _get_event_start(item).isoformat(),
@@ -144,8 +164,8 @@ def _parse_datetime(value: str) -> datetime:
 def _get_dedup_key(item: object) -> str:
     dedup_key = getattr(item, "dedup_key", None)
     if isinstance(dedup_key, str) and dedup_key:
-        return dedup_key
-    return _get_event_id(item)
+        return short_id(dedup_key)
+    return short_id(_get_event_id(item))
 
 
 def _get_event_id(item: object) -> str:

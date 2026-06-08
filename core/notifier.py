@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 from core.departure_engine import DepartureDecision
+from core.privacy import safe_exception_label
 from core.scheduler import ScheduledAlert
 from shared.config.runtime_config import get_enabled_channels, load_settings
 
@@ -224,12 +225,11 @@ def _post_json(
                 dedup_key=dedup_key,
             )
     except urllib.error.HTTPError as exc:
-        response_body = _read_error_body(exc)
         return NotificationDelivery(
             channel=channel,
             event_id=event_id,
             success=False,
-            error=f"{CHANNEL_LABELS.get(channel, channel)} returned status {exc.code}: {response_body}",
+            error=f"{CHANNEL_LABELS.get(channel, channel)} returned status {exc.code}",
             dedup_key=dedup_key,
         )
     except (urllib.error.URLError, OSError) as exc:
@@ -237,7 +237,10 @@ def _post_json(
             channel=channel,
             event_id=event_id,
             success=False,
-            error=f"{CHANNEL_LABELS.get(channel, channel)} request failed: {getattr(exc, 'reason', str(exc))}",
+            error=(
+                f"{CHANNEL_LABELS.get(channel, channel)} request failed: "
+                f"{safe_exception_label(exc)}"
+            ),
             dedup_key=dedup_key,
         )
 
@@ -255,7 +258,10 @@ def send_failure_notification(
     return _post_json(
         url=os.environ.get("DISCORD_WEBHOOK_URL"),
         payload={
-            "content": f"[smart-departure] 실행 실패: {exc}",
+            "content": (
+                "[smart-departure] 실행 실패: "
+                f"{safe_exception_label(exc)}"
+            ),
             "username": username,
         },
         channel="discord",
@@ -266,14 +272,6 @@ def send_failure_notification(
 def send_telegram_alert(decision: DepartureDecision) -> NotificationDelivery:
     """Backward-compatible single-channel Telegram sender."""
     return _send_telegram(decision, format_departure_message(decision), load_settings())
-
-
-def _read_error_body(exc: urllib.error.HTTPError) -> str:
-    try:
-        body = exc.read().decode("utf-8", errors="replace").strip()
-    except Exception:
-        return "no response body"
-    return body[:500] if body else "no response body"
 
 
 def _extract_event_id(decision: ScheduledAlert | DepartureDecision) -> str:
