@@ -19,14 +19,15 @@
 | 8 | T-008 | 🟢 DONE | 카카오 Maps 자동차 길찾기 |
 | 9 | T-010 | 🟢 DONE | 견고성 + 놓친 알림 catch-up |
 | 10 | T-011 | 🟢 DONE | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) |
-| 11 | T-009 | 🟡 READY | occasion별 준비 단계 알림 |
+| 11 | T-012 | 🔥 READY | GHA 실행 신뢰성 (빈도↑ + catch-up 보강) |
+| 12 | T-009 | 🚧 BLOCKED:T-012 | occasion별 준비 단계 알림 |
 
-**파이프라인 완료 기준**: T-011 + T-009 완료
+**파이프라인 완료 기준**: T-012 + T-009 완료
 
-> 🔥 T-011 긴급: 당일 중간에 추가된 일정이 스냅샷 staleness로 영구 누락됨 (운영 중 발견). 최우선.
+> 🔥 T-012 긴급: GHA cron이 실측 ~85분 간격으로 누락돼 알림 안 옴. repo public 전환 완료로 고빈도 cron 가능해짐.
 >
-> **순서 규칙**: T-011 → T-009. 둘 다 `scheduler.py`를 고치므로 동시 실행 금지.
-> T-009의 다단계 prep은 T-011로 staleness 잡힌 스케줄러 위에 얹어야 함.
+> **순서 규칙**: T-012 → T-009. 둘 다 `scheduler.py`·`settings.yaml`을 고치므로 동시 실행 금지.
+> T-009의 다단계 prep은 T-012로 신뢰성 잡힌 스케줄러 위에 얹는다.
 
 ---
 
@@ -45,7 +46,8 @@
 | T-008 | 카카오 Maps 자동차 길찾기 | Codex | DONE | T-007 |
 | T-010 | 견고성 + 놓친 알림 catch-up | Codex | DONE | T-007 |
 | T-011 | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) | Codex | DONE | T-010 |
-| T-009 | occasion별 준비 단계 알림 | Codex | READY | T-011 |
+| T-012 | GHA 실행 신뢰성 (빈도↑ + catch-up 보강) | Codex | READY | T-010, T-011 |
+| T-009 | occasion별 준비 단계 알림 | Codex | BLOCKED:T-012 | T-012 |
 <!-- QUEUE:END -->
 
 ---
