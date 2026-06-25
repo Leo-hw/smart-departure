@@ -102,6 +102,7 @@ gh run list -R Leo-hw/smart-departure --limit 10 \
 ## 운영 메모
 
 - **백업 레이어**: 워크플로우의 `schedule:` cron은 그대로 둠. cron-job.org가 죽어도 (부정확하게나마) 받쳐줌.
+- 현재 GitHub `schedule:`은 노이즈를 줄이기 위해 매시간 백업(`0 * * * *`)으로만 둠.
 - **비용**: public repo라 GHA 무제한 무료. cron-job.org 무료. PAT 무료.
 - **rate limit**: 인증 API 5000/시간. 5분당 1회(=12/시간)라 여유.
 - **PAT 만료**: 만료되면 dispatch가 401로 실패 → cron-job.org 잡이 실패로 뜸. 재발급 후 헤더 교체.

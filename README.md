@@ -87,6 +87,7 @@ export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 ### GitHub Actions
 
 - 워크플로우는 [.github/workflows/departure_check.yml](./.github/workflows/departure_check.yml)에 추가되어 있습니다.
-- GitHub Secrets에 환경변수를 넣고 5분 간격 요청 스케줄 또는 수동 실행으로 사용할 수 있습니다.
+- GitHub Secrets에 환경변수를 넣고 외부 5분 트리거 또는 수동 실행으로 사용할 수 있습니다.
 - 예약 실행은 GitHub Actions의 부하에 따라 지연되거나 일부 tick이 누락될 수 있습니다.
+- 정시성이 필요하면 [외부 트리거 가이드](./deploy/external_trigger_setup.md)에 따라 cron-job.org에서 `workflow_dispatch`를 5분마다 호출합니다.
 - `.runtime/`은 Actions cache로 다음 실행에 복원되어 dedup 상태를 유지합니다.

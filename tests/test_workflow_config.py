@@ -8,10 +8,10 @@ WORKFLOW_PATH = Path(".github/workflows/departure_check.yml")
 
 
 class WorkflowConfigTests(unittest.TestCase):
-    def test_departure_check_uses_five_minute_schedule_and_manual_trigger(self):
+    def test_departure_check_uses_hourly_backup_schedule_and_manual_trigger(self):
         workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
 
-        self.assertIn('cron: "*/5 * * * *"', workflow)
+        self.assertIn('cron: "0 * * * *"', workflow)
         self.assertIn("workflow_dispatch:", workflow)
 
     def test_departure_check_uses_pip_cache_and_concurrency_guard(self):
