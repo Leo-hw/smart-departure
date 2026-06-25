@@ -2,6 +2,11 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### T-014 외부 트리거 구현 준비 완료, 사용자 셋업 검증 대기
+- GitHub `schedule:`을 매시간 백업 레이어로 낮추고 `workflow_dispatch`를 주 실행 경로로 유지
+- cron-job.org에서 5분마다 `workflow_dispatch`를 호출하는 PAT 최소권한 셋업 가이드 추가
+- 워크플로우 설정 회귀 테스트를 hourly backup schedule + manual trigger 기준으로 갱신
+
 ### T-013 public 로그/캐시 안전화 구현 완료, 검증 중
 - 실행 로그에서 일정명·장소·원문 event ID를 제거하고 이벤트 식별자는 8자리 해시로 출력
 - 예외 및 전송 실패 로그를 오류 타입·상태 코드 수준으로 제한해 민감한 메시지와 응답 본문 제거

@@ -21,7 +21,7 @@
 | 10 | T-011 | 🟢 DONE | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) |
 | 11 | T-012 | 🟠 VERIFY | GHA 실행 신뢰성 (빈도↑ + catch-up 보강) |
 | 12 | T-013 | 🟠 VERIFY | public 안전화: 로그/캐시 민감정보 제거 |
-| 13 | T-014 | 🔥 READY | 외부 트리거 (cron-job.org → workflow_dispatch) |
+| 13 | T-014 | 🟠 VERIFY | 외부 트리거 (cron-job.org → workflow_dispatch) |
 | 14 | T-009 | 🚧 BLOCKED:T-014 | occasion별 준비 단계 알림 |
 
 **파이프라인 완료 기준**: T-014 + T-009 완료
@@ -50,7 +50,7 @@
 | T-011 | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) | Codex | DONE | T-010 |
 | T-012 | GHA 실행 신뢰성 (빈도↑ + catch-up 보강) | Codex | VERIFY | T-010, T-011 |
 | T-013 | public 안전화: 로그/캐시 민감정보 제거 | Codex | VERIFY | T-012 |
-| T-014 | 외부 트리거 (cron-job.org → workflow_dispatch) | Codex+사용자 | READY | T-012, T-013 |
+| T-014 | 외부 트리거 (cron-job.org → workflow_dispatch) | Codex+사용자 | VERIFY | T-012, T-013 |
 | T-009 | occasion별 준비 단계 알림 | Codex | BLOCKED:T-014 | T-014 |
 <!-- QUEUE:END -->
 
