@@ -2,6 +2,9 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### 운영 점검
+- 2026-08-17: GitHub Actions scheduled workflow inactivity 경고 대응을 위해 저장소 활동 기록 갱신
+
 ### T-014 외부 트리거 구현 준비 완료, 사용자 셋업 검증 대기
 - GitHub `schedule:`을 매시간 백업 레이어로 낮추고 `workflow_dispatch`를 주 실행 경로로 유지
 - cron-job.org에서 5분마다 `workflow_dispatch`를 호출하는 PAT 최소권한 셋업 가이드 추가
