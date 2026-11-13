@@ -24,32 +24,15 @@ class MapsServiceTests(unittest.TestCase):
             _utcnow=Mock(return_value=self.fixed_now),
         )
 
-    def test_get_travel_time_uses_google_api_and_writes_cache(self):
+    def _routes_response(self, payload):
         response = MagicMock()
-        response.read.return_value = json.dumps(
-            {
-                "status": "OK",
-                "routes": [
-                    {
-                        "legs": [
-                            {
-                                "duration": {
-                                    "value": 2100,
-                                }
-                            }
-                        ]
-                    }
-                ],
-            }
-        ).encode("utf-8")
+        response.read.return_value = json.dumps(payload).encode("utf-8")
         response.__enter__.return_value = response
         response.__exit__.return_value = None
+        return response
 
-        expected_url = (
-            "https://maps.googleapis.com/maps/api/directions/json?"
-            "origin=Seoul+Station&destination=Gangnam+Station&mode=transit"
-            "&key=test-key&language=ko&departure_time=now"
-        )
+    def test_get_travel_time_uses_google_routes_api_and_writes_cache(self):
+        response = self._routes_response({"routes": [{"duration": "2100s"}]})
 
         with self._patch_context(), patch.dict(
             "os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}, clear=False
@@ -60,13 +43,45 @@ class MapsServiceTests(unittest.TestCase):
         self.assertFalse(result.is_estimated)
         self.assertEqual(result.provider, "google")
         mock_urlopen.assert_called_once()
-        self.assertEqual(mock_urlopen.call_args.args[0], expected_url)
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://routes.googleapis.com/directions/v2:computeRoutes")
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.get_header("X-goog-api-key"), "test-key")
+        self.assertEqual(request.get_header("X-goog-fieldmask"), "routes.duration")
+        self.assertNotIn("test-key", request.full_url)
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["origin"], {"address": "Seoul Station"})
+        self.assertEqual(body["destination"], {"address": "Gangnam Station"})
+        self.assertEqual(body["travelMode"], "TRANSIT")
+        self.assertEqual(body["languageCode"], "ko")
         self.assertEqual(mock_urlopen.call_args.kwargs["timeout"], 10)
 
         cache_data = json.loads(self.cache_path.read_text(encoding="utf-8"))
         self.assertEqual(
             cache_data["Seoul Station|Gangnam Station|transit"]["duration_minutes"], 35
         )
+
+    def test_routes_api_maps_walking_and_unknown_modes(self):
+        for mode, expected in (("walking", "WALK"), ("bicycling", "TRANSIT")):
+            response = self._routes_response({"routes": [{"duration": "600s"}]})
+            with self.subTest(mode=mode), self._patch_context(), patch.dict(
+                "os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}, clear=False
+            ), patch.object(maps_service.urllib.request, "urlopen", return_value=response) as mock_urlopen:
+                result = maps_service.get_travel_time("Home", "Office", mode)
+                body = json.loads(mock_urlopen.call_args.args[0].data.decode("utf-8"))
+                self.assertEqual(body["travelMode"], expected)
+                self.assertEqual(result.duration_minutes, 10)
+
+    def test_routes_api_empty_or_malformed_response_is_estimated(self):
+        for payload in ({}, {"routes": []}, {"routes": [{"duration": 2100}]}, {"routes": [{"duration": "abc"}]},
+                        {"error": {"code": 403, "status": "PERMISSION_DENIED"}}):
+            response = self._routes_response(payload)
+            with self.subTest(payload=payload), self._patch_context(), patch.dict(
+                "os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}, clear=False
+            ), patch.object(maps_service.urllib.request, "urlopen", return_value=response):
+                result = maps_service.get_travel_time("Nowhere", "Elsewhere", "transit")
+                self.assertEqual(result.duration_minutes, 30)
+                self.assertTrue(result.is_estimated)
 
     def test_get_travel_time_falls_back_to_cache_when_api_fails(self):
         cache_payload = {
