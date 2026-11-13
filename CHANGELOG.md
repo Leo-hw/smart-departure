@@ -2,6 +2,11 @@
 
 ## [미완료] Phase 1 MVP — 진행 중
 
+### T-015 Google 이동 시간 Routes API 전환 구현 완료, 실키 검증 대기
+- Directions API(Legacy) GET 호출을 Routes API `computeRoutes` POST로 교체(키는 헤더, FieldMask `routes.duration`)
+- 이동 수단 매핑·duration 파싱 추가, 실패 시 캐시 → 30분 추정 동작 유지
+- 단위 테스트 50개 통과
+
 ### 운영 점검
 - 2026-08-17: GitHub Actions scheduled workflow inactivity 경고 대응을 위해 저장소 활동 기록 갱신
 
