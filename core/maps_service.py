@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 
-_GOOGLE_DIRECTIONS_ENDPOINT = "https://maps.googleapis.com/maps/api/directions/json"
+# Routes API (Directions API Legacy는 새 키로 호출할 수 없음 — T-015)
+_GOOGLE_ROUTES_ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes"
+_GOOGLE_ROUTES_FIELD_MASK = "routes.duration"
+_GOOGLE_TRAVEL_MODES = {"transit": "TRANSIT", "driving": "DRIVE", "walking": "WALK"}
 _KAKAO_ADDRESS_ENDPOINT = "https://dapi.kakao.com/v2/local/search/address.json"
 _KAKAO_DIRECTIONS_ENDPOINT = "https://apis-navi.kakaomobility.com/v1/directions"
 _CACHE_PATH = Path(".runtime") / "travel_cache.json"
@@ -142,31 +145,47 @@ class _GoogleMapsProvider(_BaseProvider):
         if not api_key:
             return None
 
-        params = {
-            "origin": origin,
-            "destination": destination,
-            "mode": transport_mode if transport_mode in {"transit", "driving", "walking"} else "transit",
-            "key": api_key,
-            "language": "ko",
+        body = {
+            "origin": {"address": origin},
+            "destination": {"address": destination},
+            "travelMode": _GOOGLE_TRAVEL_MODES.get(transport_mode, "TRANSIT"),
+            "languageCode": "ko",
+            "regionCode": "KR",
         }
-        if transport_mode in {"transit", "driving"}:
-            params["departure_time"] = "now"
+        request = urllib.request.Request(
+            _GOOGLE_ROUTES_ENDPOINT,
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": api_key,
+                "X-Goog-FieldMask": _GOOGLE_ROUTES_FIELD_MASK,
+            },
+            method="POST",
+        )
 
         try:
-            query_string = urllib.parse.urlencode(params)
-            url = f"{_GOOGLE_DIRECTIONS_ENDPOINT}?{query_string}"
-            with urllib.request.urlopen(url, timeout=10) as response:
+            with urllib.request.urlopen(request, timeout=10) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, OSError, ValueError):
             return None
 
-        if not isinstance(payload, dict) or payload.get("status") != "OK":
+        if not isinstance(payload, dict):
             return None
 
+        # 경로가 없으면 Routes API는 빈 객체 {}를 돌려준다. duration은 "2100s" 형식 문자열
         try:
-            return int(payload["routes"][0]["legs"][0]["duration"]["value"] // 60)
-        except (KeyError, IndexError, TypeError, ValueError):
+            duration = payload["routes"][0]["duration"]
+        except (KeyError, IndexError, TypeError):
             return None
+        if not isinstance(duration, str) or not duration.endswith("s"):
+            return None
+        try:
+            seconds = float(duration[:-1])
+        except ValueError:
+            return None
+        if seconds < 0:
+            return None
+        return int(seconds // 60)
 
 
 class _KakaoMapsProvider(_BaseProvider):

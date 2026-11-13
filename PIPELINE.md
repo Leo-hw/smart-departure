@@ -23,6 +23,7 @@
 | 12 | T-013 | 🟠 VERIFY | public 안전화: 로그/캐시 민감정보 제거 |
 | 13 | T-014 | 🟠 VERIFY | 외부 트리거 (cron-job.org → workflow_dispatch) |
 | 14 | T-009 | 🚧 BLOCKED:T-014 | occasion별 준비 단계 알림 |
+| 15 | T-015 | 🟠 VERIFY | Google 이동 시간 Routes API 전환 |
 
 **파이프라인 완료 기준**: T-014 + T-009 완료
 
@@ -52,6 +53,7 @@
 | T-013 | public 안전화: 로그/캐시 민감정보 제거 | Codex | VERIFY | T-012 |
 | T-014 | 외부 트리거 (cron-job.org → workflow_dispatch) | Codex+사용자 | VERIFY | T-012, T-013 |
 | T-009 | occasion별 준비 단계 알림 | Codex | BLOCKED:T-014 | T-014 |
+| T-015 | Google 이동 시간 Routes API 전환 | and-to-server | VERIFY | - |
 <!-- QUEUE:END -->
 
 ---
