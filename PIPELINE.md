@@ -5,7 +5,9 @@
 
 ---
 
-## 현재 활성 파이프라인: Phase 2
+## 현재 활성 파이프라인: begonia 폰 운영
+
+> 운영 실행은 [begonia 폰 타이머](./deploy/begonia_phone.md)가 담당한다. Actions 자동 실행은 중지하고 수동 실행만 남겼다. T-012·T-014의 미검증 GHA AC는 완료로 간주하지 않는다.
 
 | 순서 | 티켓 | 상태 | 설명 |
 |------|------|------|------|
@@ -19,18 +21,18 @@
 | 8 | T-008 | 🟢 DONE | 카카오 Maps 자동차 길찾기 |
 | 9 | T-010 | 🟢 DONE | 견고성 + 놓친 알림 catch-up |
 | 10 | T-011 | 🟢 DONE | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) |
-| 11 | T-012 | 🟠 VERIFY | GHA 실행 신뢰성 (빈도↑ + catch-up 보강) |
+| 11 | T-012 | ⚪ SUPERSEDED | GHA 실행 빈도 검증을 폰 타이머로 대체; catch-up 코드는 유지 |
 | 12 | T-013 | 🟠 VERIFY | public 안전화: 로그/캐시 민감정보 제거 |
-| 13 | T-014 | 🟠 VERIFY | 외부 트리거 (cron-job.org → workflow_dispatch) |
-| 14 | T-009 | 🚧 BLOCKED:T-014 | occasion별 준비 단계 알림 |
-| 15 | T-015 | 🟠 VERIFY | Google 이동 시간 Routes API 전환 |
+| 13 | T-014 | ⚪ SUPERSEDED | 외부 트리거 대신 폰 타이머 운영 |
+| 14 | T-015 | 🟢 DONE | Google 이동 시간 Routes API 전환·폰 실키 확인 |
+| 15 | T-017 | 🟢 DONE | 이동 시간 변동 시 중복 알림 방지 |
+| 16 | T-009 | ⚪ READY | occasion별 준비 단계 알림 |
+| 17 | T-018 | ⚪ READY | 대중교통 이동 시간 변동 정책 |
+| 18 | T-019 | ⚪ READY | 캘린더 일부 실패 시 나머지 일정 처리 |
 
-**파이프라인 완료 기준**: T-014 + T-009 완료
+**현재 후속 작업**: T-009, T-018, T-019. T-013 운영 검증은 별도 유지.
 
-> 🔥 T-014 핵심: GHA `schedule:` cron이 1.5~4.7시간 지연 → 외부 cron이 workflow_dispatch(즉시 실행)를
-> 매 5분 호출해 정시성 확보. 라이브 측정상 dispatch는 2초 내 실행됨. 셋업 가이드: deploy/external_trigger_setup.md
->
-> T-012/T-013은 코드·마스킹 검증 끝, 정시성은 T-014가 마무리. T-009는 그 위에 얹는다.
+> T-016(카카오 대중교통 전환)은 보류한다. 현재 Google Routes가 폰에서 실제 값을 반환하며, 카카오 전환은 출발 시각 변동 문제를 해결하지 않는다. T-018 결과를 보고 재평가한다.
 
 ---
 
@@ -49,11 +51,14 @@
 | T-008 | 카카오 Maps 자동차 길찾기 | Codex | DONE | T-007 |
 | T-010 | 견고성 + 놓친 알림 catch-up | Codex | DONE | T-007 |
 | T-011 | [핫픽스] 당일 추가 일정 미반영 (스냅샷 staleness) | Codex | DONE | T-010 |
-| T-012 | GHA 실행 신뢰성 (빈도↑ + catch-up 보강) | Codex | VERIFY | T-010, T-011 |
+| T-012 | GHA 실행 신뢰성 (빈도↑ + catch-up 보강) | Codex | SUPERSEDED | T-010, T-011 |
 | T-013 | public 안전화: 로그/캐시 민감정보 제거 | Codex | VERIFY | T-012 |
-| T-014 | 외부 트리거 (cron-job.org → workflow_dispatch) | Codex+사용자 | VERIFY | T-012, T-013 |
-| T-009 | occasion별 준비 단계 알림 | Codex | BLOCKED:T-014 | T-014 |
-| T-015 | Google 이동 시간 Routes API 전환 | and-to-server | VERIFY | - |
+| T-014 | 외부 트리거 (cron-job.org → workflow_dispatch) | Codex+사용자 | SUPERSEDED | T-012, T-013 |
+| T-015 | Google 이동 시간 Routes API 전환 | and-to-server | DONE | - |
+| T-017 | 이동 시간 변동 시 중복 알림 방지 | Codex | DONE | T-015 |
+| T-009 | occasion별 준비 단계 알림 | Codex | READY | T-017 |
+| T-018 | 대중교통 이동 시간 변동 정책 | Codex | READY | T-017 |
+| T-019 | 캘린더 일부 실패 시 나머지 일정 처리 | Codex | READY | - |
 <!-- QUEUE:END -->
 
 ---

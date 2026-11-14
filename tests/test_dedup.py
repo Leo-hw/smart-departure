@@ -173,6 +173,7 @@ class DedupTests(unittest.TestCase):
             plan,
             classification="catch_up",
             evaluated_at=self.now,
+            stage_id="early",
         )
         latest = ScheduledAlert(
             "prep",
@@ -180,6 +181,7 @@ class DedupTests(unittest.TestCase):
             plan,
             classification="catch_up",
             evaluated_at=self.now,
+            stage_id="late",
         )
 
         selected, sealed = select_latest_prep_alerts([older, latest], now=self.now)
@@ -194,6 +196,70 @@ class DedupTests(unittest.TestCase):
             persisted[hashed_key]["event_start"],
             plan.event_start.isoformat(),
         )
+
+    def test_changed_travel_time_does_not_resend_prep_or_departure(self):
+        original = SchedulePlan(
+            event_id="event-1",
+            summary="스터디 모임",
+            location="강남",
+            event_start=datetime(2026, 4, 16, 15, 0, tzinfo=KST),
+            travel_minutes=35,
+            is_estimated=False,
+            departure_time=datetime(2026, 4, 16, 14, 15, tzinfo=KST),
+            prep_alert_time=datetime(2026, 4, 16, 13, 15, tzinfo=KST),
+            transport_mode="transit",
+            provider="google",
+            buffer_minutes=10,
+        )
+        changed = SchedulePlan(
+            **{
+                **vars(original),
+                "travel_minutes": 38,
+                "departure_time": original.departure_time - timedelta(minutes=3),
+                "prep_alert_time": original.prep_alert_time - timedelta(minutes=3),
+            }
+        )
+        original_alerts = [
+            ScheduledAlert("prep", original.prep_alert_time, original),
+            ScheduledAlert("departure", original.departure_time, original),
+        ]
+        changed_alerts = [
+            ScheduledAlert("prep", changed.prep_alert_time, changed),
+            ScheduledAlert("departure", changed.departure_time, changed),
+        ]
+
+        with patch("core.dedup.SENT_ALERTS_PATH", self.sent_alerts_path):
+            mark_successful_deliveries(original_alerts, self.settings, now=self.now)
+            pending, skipped = filter_pending_decisions(changed_alerts, self.settings, now=self.now)
+
+        self.assertEqual(pending, [])
+        self.assertEqual(skipped, changed_alerts)
+
+    def test_new_start_time_and_distinct_prep_stages_are_independent(self):
+        plan = SchedulePlan(
+            event_id="event-1",
+            summary="스터디 모임",
+            location="강남",
+            event_start=datetime(2026, 4, 16, 15, 0, tzinfo=KST),
+            travel_minutes=35,
+            is_estimated=False,
+            departure_time=datetime(2026, 4, 16, 14, 15, tzinfo=KST),
+            prep_alert_time=datetime(2026, 4, 16, 13, 15, tzinfo=KST),
+            transport_mode="transit",
+            provider="google",
+            buffer_minutes=10,
+        )
+        first = ScheduledAlert("prep", plan.prep_alert_time, plan, stage_id="start")
+        second = ScheduledAlert("prep", plan.prep_alert_time, plan, stage_id="check")
+        rescheduled = SchedulePlan(**{**vars(plan), "event_start": plan.event_start + timedelta(hours=1)})
+        moved = ScheduledAlert("prep", plan.prep_alert_time, rescheduled, stage_id="start")
+
+        with patch("core.dedup.SENT_ALERTS_PATH", self.sent_alerts_path):
+            mark_successful_deliveries([first], self.settings, now=self.now)
+            pending, skipped = filter_pending_decisions([second, moved], self.settings, now=self.now)
+
+        self.assertEqual(pending, [second, moved])
+        self.assertEqual(skipped, [])
 
 
 if __name__ == "__main__":

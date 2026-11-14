@@ -1,5 +1,7 @@
 # 외부 트리거 셋업 가이드 (cron-job.org → GHA workflow_dispatch)
 
+> 이전 배포안. 현재 운영은 [begonia 폰 타이머](./begonia_phone.md)입니다. 외부 트리거를 다시 켜면 중복 알림이 생길 수 있습니다.
+
 > 목적: GHA `schedule:` cron의 지연/누락(실측 1.5~4.7시간)을 우회.
 > 신뢰성 있는 외부 cron이 매 5분 `workflow_dispatch`를 호출 → GHA가 2초 내 즉시 실행.
 > 새 서버 불필요. 무료.

@@ -1,5 +1,7 @@
 # Oracle Crontab Deployment
 
+> 이전 배포안. 현재 운영은 [begonia 폰 타이머](./begonia_phone.md)입니다. 중복 알림 방지를 위해 병행 실행하지 마세요.
+
 Oracle VM에서 `main.py`를 30분 간격으로 실행하는 기준 가이드입니다.
 
 ## 1. 앱 배치
