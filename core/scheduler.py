@@ -38,10 +38,12 @@ class ScheduledAlert:
     plan: SchedulePlan
     classification: str = "on_time"
     evaluated_at: datetime | None = None
+    stage_id: str | None = None
 
     @property
     def dedup_key(self) -> str:
-        return f"{self.plan.event_id}:{self.alert_type}:{self.alert_time.isoformat()}"
+        key = f"{self.plan.event_id}:{self.plan.event_start.isoformat()}:{self.alert_type}"
+        return f"{key}:{self.stage_id}" if self.stage_id is not None else key
 
     @property
     def event_id(self) -> str:
