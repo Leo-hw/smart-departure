@@ -77,17 +77,10 @@ export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 
 ## Deployment
 
-두 배포 방식 모두 같은 `main.py`를 실행합니다.
+현재 운영 배포는 begonia 폰의 systemd 사용자 타이머입니다. 5분마다 `main.py`를 실행합니다.
+운영 정보와 확인 명령은 [deploy/begonia_phone.md](./deploy/begonia_phone.md)에 있습니다.
 
-### Oracle Crontab
+### 과거 배포안
 
-- 배포 가이드는 [deploy/oracle_crontab.md](./deploy/oracle_crontab.md)에 정리되어 있습니다.
-- 권장 주기: `*/30 * * * *`
-
-### GitHub Actions
-
-- 워크플로우는 [.github/workflows/departure_check.yml](./.github/workflows/departure_check.yml)에 추가되어 있습니다.
-- GitHub Secrets에 환경변수를 넣고 외부 5분 트리거 또는 수동 실행으로 사용할 수 있습니다.
-- 예약 실행은 GitHub Actions의 부하에 따라 지연되거나 일부 tick이 누락될 수 있습니다.
-- 정시성이 필요하면 [외부 트리거 가이드](./deploy/external_trigger_setup.md)에 따라 cron-job.org에서 `workflow_dispatch`를 5분마다 호출합니다.
-- `.runtime/`은 Actions cache로 다음 실행에 복원되어 dedup 상태를 유지합니다.
+- [Oracle crontab](./deploy/oracle_crontab.md)과 [외부 Actions 트리거](./deploy/external_trigger_setup.md)는 현재 사용하지 않는 이전 배포안입니다.
+- [GitHub Actions](./.github/workflows/departure_check.yml)는 필요할 때만 수동 실행할 수 있습니다. 폰과 동시에 실행하면 각 환경의 dedup 기록이 달라 중복 알림이 생길 수 있습니다.

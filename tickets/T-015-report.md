@@ -4,7 +4,7 @@
 - ✅ Routes API `computeRoutes` 호출로 교체 (`core/maps_service.py`)
 - ✅ 이동 수단 매핑, duration 문자열 파싱, 실패 시 캐시 → 30분 추정 유지
 - ✅ `python -m unittest discover -s tests`: 50개 통과 (기존 48 + 신규 2, URL 검증 테스트는 요청 본문·헤더 검증으로 교체)
-- ⚠️ 실제 키 검증은 begonia 폰에서 `.env` 작성 후 확인 예정 (VERIFY)
+- ✅ begonia 폰에서 실제 키로 이동 시간 28/47/57분 확인. 2026-11-14 인계서에 실제 일정 `estimated=False` 기록
 
 ## 달라진 점
 - 요청이 GET 쿼리 → POST JSON. API 키가 URL이 아닌 헤더로 가서 로그·프록시에 남을 위험이 줄었다.
