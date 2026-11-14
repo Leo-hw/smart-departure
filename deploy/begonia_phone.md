@@ -51,8 +51,6 @@ cat ~/apps/smart-departure/.runtime/sent_alerts.json        # 보낸 알림 기�
 12:40 plan travel=38m departure=12:42 prep=11:42 → due prep(catch_up)      → 준비 알림 2 (중복)
                                                  → due departure(on_time) → 출발 알림
 12:45 plan travel=25m departure=12:55 prep=11:55 → 준비 알림 3 + 출발 알림 2 (둘 다 중복)
-```
-
 12:50 travel=32m → 출발 알림 3
 12:55 travel=24m → 준비·출발 알림 시도 2 (준비 11:56은 12:35에 보낸 것과 같은 시각인데 다시 시도됨 — 원인 미확인)
 13:00 travel=32m, 13:05 travel=25m → 시도 0 (출발 시각이 지나 알림 창 밖)
