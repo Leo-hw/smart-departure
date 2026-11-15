@@ -29,6 +29,7 @@ class TravelResult:
     duration_minutes: int
     is_estimated: bool
     provider: str
+    source: str = "api"
 
 
 def _utcnow() -> datetime:
@@ -130,12 +131,14 @@ class _GoogleMapsProvider(_BaseProvider):
                 duration_minutes=cached_duration,
                 is_estimated=False,
                 provider=self.provider_name,
+                source="cache",
             )
 
         return TravelResult(
             duration_minutes=_DEFAULT_TRAVEL_TIME_MINUTES,
             is_estimated=True,
             provider=self.provider_name,
+            source="estimate",
         )
 
     def _fetch_duration_from_api(
@@ -207,12 +210,14 @@ class _KakaoMapsProvider(_BaseProvider):
                 duration_minutes=cached_duration,
                 is_estimated=False,
                 provider=self.provider_name,
+                source="cache",
             )
 
         return TravelResult(
             duration_minutes=_DEFAULT_TRAVEL_TIME_MINUTES,
             is_estimated=True,
             provider=self.provider_name,
+            source="estimate",
         )
 
     def _fetch_duration_from_api(self, origin: str, destination: str) -> Optional[int]:

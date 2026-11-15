@@ -24,6 +24,7 @@ class DepartureDecision:
     should_alert: bool
     is_estimated: bool
     provider: str
+    travel_source: str = "api"
 
 
 def build_departure_decisions(
@@ -60,6 +61,7 @@ def build_departure_decisions(
                 should_alert=should_alert,
                 is_estimated=travel_result.is_estimated,
                 provider=travel_result.provider,
+                travel_source=travel_result.source,
             )
         )
 

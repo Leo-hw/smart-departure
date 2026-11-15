@@ -68,6 +68,7 @@ export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 - TTL을 양수로 설정하면 같은 날짜의 신선한 스냅샷만 해당 시간 동안 재사용합니다.
 - 준비 알림은 `prep_profiles`에서 일정 제목 키워드로 선택된 단계별로 계산됩니다. 매칭되지 않으면 `casual`을 사용하며, 캘린더 설명에 `occasion: formal`처럼 적어 지정할 수 있습니다.
 - 놓친 출발 알림은 기본적으로 `schedule.departure_catchup_minutes: 45`까지 catch-up합니다.
+- 대중교통은 같은 일정·시각·장소의 정상 Maps API 이동 시간이 늘어나면 출발을 앞당기고, 줄어도 출발을 다시 늦추지 않습니다. 캐시·추정값은 이 기준을 높이지 않으며 일정 시각·장소 변경 시 새로 계산합니다.
 
 ## Dedup
 

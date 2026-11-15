@@ -10,11 +10,11 @@ from typing import Any, Iterable
 from zoneinfo import ZoneInfo
 
 from core.calendar_service import CalendarEvent, get_upcoming_events
-from core.departure_engine import build_departure_decisions
+from core.departure_engine import DepartureDecision, build_departure_decisions
 
 KST = ZoneInfo("Asia/Seoul")
 SCHEDULE_TODAY_PATH = Path(".runtime") / "schedule_today.json"
-SNAPSHOT_VERSION = 2
+SNAPSHOT_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,8 @@ class SchedulePlan:
     buffer_minutes: int
     occasion: str = "casual"
     stages: tuple[PrepStage, ...] = ()
+    travel_source: str = "api"
+    trusted_travel_minutes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -81,7 +83,13 @@ def load_or_build_daily_schedule(
     if _snapshot_is_fresh(snapshot, current_time, snapshot_ttl_minutes):
         return _deserialize_plans(snapshot.get("plans", []))
 
-    plans = build_daily_plans(settings, now=current_time)
+    prior_plans = (
+        _deserialize_plans(snapshot.get("plans", []))
+        if snapshot.get("version") == SNAPSHOT_VERSION
+        and snapshot.get("date") == current_time.date().isoformat()
+        else []
+    )
+    plans = build_daily_plans(settings, now=current_time, prior_plans=prior_plans)
     _save_schedule_snapshot(current_time, plans)
     return plans
 
@@ -90,37 +98,73 @@ def build_daily_plans(
     settings: dict[str, Any],
     now: datetime | None = None,
     events: Iterable[CalendarEvent] | None = None,
+    prior_plans: Iterable[SchedulePlan] = (),
 ) -> list[SchedulePlan]:
     """Create today's schedule plans from calendar events and travel times."""
     current_time = _ensure_kst(now or _current_time_kst())
     source_events = list(events) if events is not None else _get_today_events(current_time)
+    prior_by_id = {plan.event_id: plan for plan in prior_plans}
     decisions = build_departure_decisions(source_events, now=current_time)
     plans: list[SchedulePlan] = []
     for decision in decisions:
         if decision.event.start_time.date() != current_time.date():
             continue
+        travel_minutes, trusted_minutes, is_estimated = _stable_transit_minutes(
+            decision, prior_by_id.get(decision.event.event_id)
+        )
+        departure_time = decision.event.start_time - timedelta(
+            minutes=travel_minutes + decision.buffer_minutes
+        )
         occasion = classify_occasion(decision.event, settings)
-        stages = _build_stages(occasion, decision.departure_time, settings)
+        stages = _build_stages(occasion, departure_time, settings)
         plans.append(
             SchedulePlan(
                 event_id=decision.event.event_id,
                 summary=decision.event.summary,
                 location=decision.event.location,
                 event_start=decision.event.start_time,
-                travel_minutes=decision.travel_minutes,
-                is_estimated=decision.is_estimated,
-                departure_time=decision.departure_time,
+                travel_minutes=travel_minutes,
+                is_estimated=is_estimated,
+                departure_time=departure_time,
                 prep_alert_time=None,
                 transport_mode=decision.transport_mode,
                 provider=decision.provider,
                 buffer_minutes=decision.buffer_minutes,
                 occasion=occasion,
                 stages=stages,
+                travel_source=decision.travel_source,
+                trusted_travel_minutes=trusted_minutes,
             )
         )
 
     plans.sort(key=lambda item: item.departure_time)
     return plans
+
+
+def _stable_transit_minutes(
+    decision: DepartureDecision, prior: SchedulePlan | None
+) -> tuple[int, int | None, bool]:
+    if decision.transport_mode != "transit":
+        return decision.travel_minutes, None, decision.is_estimated
+
+    same_trip = (
+        prior is not None
+        and prior.event_start == decision.event.start_time
+        and prior.location == decision.event.location
+        and prior.transport_mode == decision.transport_mode
+        and prior.provider == decision.provider
+    )
+    trusted = prior.trusted_travel_minutes if same_trip else None
+    if decision.travel_source == "api" and not decision.is_estimated:
+        trusted = max(trusted or 0, decision.travel_minutes)
+
+    effective = trusted if trusted is not None else decision.travel_minutes
+    estimated = (
+        decision.is_estimated
+        or decision.travel_source != "api"
+        or effective != decision.travel_minutes
+    )
+    return effective, trusted, estimated
 
 
 def get_due_alerts(
@@ -198,7 +242,10 @@ def classify_alert(
     expiry = (
         alert.plan.departure_time
         if alert.alert_type == "prep"
-        else alert.plan.departure_time + timedelta(minutes=departure_catchup_minutes)
+        else max(
+            alert.plan.departure_time + timedelta(minutes=departure_catchup_minutes),
+            alert.plan.event_start,
+        )
     )
 
     if current_time < on_time_start:
@@ -364,6 +411,11 @@ def _deserialize_plans(raw_plans: Iterable[dict[str, Any]]) -> list[SchedulePlan
                 stages=tuple(
                     PrepStage(str(stage["label"]), _parse_datetime(str(stage["alert_time"])))
                     for stage in raw_plan.get("stages", []) if stage.get("label") != "출발"
+                ),
+                travel_source=str(raw_plan.get("travel_source", "api")),
+                trusted_travel_minutes=(
+                    int(raw_plan["trusted_travel_minutes"])
+                    if raw_plan.get("trusted_travel_minutes") is not None else None
                 ),
             )
         )
