@@ -1,6 +1,6 @@
 # 인계: begonia 폰에서 smart-departure 운영 (and-to-server → smart-departure 세션)
 
-> 2026-11-14 후속: T-017에서 알림 키를 안정화했고 Actions 자동 `schedule`을 제거했다. 폰에서 변경 코드의 실제 알림 재발송 여부는 아직 검증하지 않았다. 세부 내용은 `tickets/T-017-report.md` 참고.
+> 2026-11-15 후속: T-017에서 알림 키를 안정화했고 Actions 자동 `schedule`을 제거했다. 실제 시험 일정에서 준비·출발 알림이 각각 한 번만 전송 시도되고 이후 실행에서 재전송되지 않음을 확인했다. 아래 2~4절은 수정 전의 인계 기록이다. 세부 결과는 `tickets/T-017-report.md` 참고.
 
 > 작성 2026-11-14, and-to-server 세션. 원 지시서: ai-dashboard `docs/handoff-and-to-server-smart-departure.md`.
 > 이 문서는 **봇이 지금 어디서 어떻게 도는지**와 **남은 문제**를 smart-departure 세션이 이어받기 위한 것이다.
