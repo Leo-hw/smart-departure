@@ -42,6 +42,7 @@ class MapsServiceTests(unittest.TestCase):
         self.assertEqual(result.duration_minutes, 35)
         self.assertFalse(result.is_estimated)
         self.assertEqual(result.provider, "google")
+        self.assertEqual(result.source, "api")
         mock_urlopen.assert_called_once()
         request = mock_urlopen.call_args.args[0]
         self.assertEqual(request.full_url, "https://routes.googleapis.com/directions/v2:computeRoutes")
@@ -105,6 +106,7 @@ class MapsServiceTests(unittest.TestCase):
         self.assertEqual(result.duration_minutes, 42)
         self.assertFalse(result.is_estimated)
         self.assertEqual(result.provider, "google")
+        self.assertEqual(result.source, "cache")
 
     def test_get_travel_time_returns_default_when_api_and_cache_fail(self):
         stale_cache_payload = {
@@ -128,6 +130,7 @@ class MapsServiceTests(unittest.TestCase):
         self.assertEqual(result.duration_minutes, 30)
         self.assertTrue(result.is_estimated)
         self.assertEqual(result.provider, "google")
+        self.assertEqual(result.source, "estimate")
 
     def test_get_travel_time_returns_default_when_api_key_missing(self):
         with self._patch_context(), patch.dict("os.environ", {}, clear=True):
@@ -136,6 +139,7 @@ class MapsServiceTests(unittest.TestCase):
         self.assertEqual(result.duration_minutes, 30)
         self.assertTrue(result.is_estimated)
         self.assertEqual(result.provider, "google")
+        self.assertEqual(result.source, "estimate")
 
     def test_driving_selects_kakao_provider(self):
         provider = maps_service._select_provider("driving")

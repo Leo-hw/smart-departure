@@ -104,6 +104,82 @@ class SchedulerTests(unittest.TestCase):
                     sorted(offsets, reverse=True),
                 )
 
+    def test_transit_travel_time_only_moves_departure_earlier(self):
+        event = CalendarEvent("test", "Gangnam", datetime(2026, 4, 19, 19, 0, tzinfo=KST), "event-1")
+        prior = []
+        actual = []
+        for minutes in (50, 45, 47, 55, 46):
+            decision = self._decision(event, minutes)
+            with patch("core.scheduler.build_departure_decisions", return_value=[decision]):
+                prior = build_daily_plans(self.settings, now=self.now, events=[event], prior_plans=prior)
+            actual.append(prior[0].departure_time.strftime("%H:%M"))
+        self.assertEqual(actual, ["18:00", "18:00", "18:00", "17:55", "17:55"])
+        self.assertEqual(prior[0].trusted_travel_minutes, 55)
+        self.assertEqual(prior[0].travel_minutes, 55)
+
+    def test_editing_start_location_or_transport_resets_transit_baseline(self):
+        event = CalendarEvent("test", "Gangnam", datetime(2026, 4, 19, 19, 0, tzinfo=KST), "event-1")
+        with patch("core.scheduler.build_departure_decisions", return_value=[self._decision(event, 55)]):
+            old = build_daily_plans(self.settings, now=self.now, events=[event])
+        changes = [
+            CalendarEvent("test", "Gangnam", event.start_time + timedelta(minutes=30), "event-1"),
+            CalendarEvent("test", "Other", event.start_time, "event-1"),
+        ]
+        for changed_event in changes:
+            with self.subTest(changed_event=changed_event), patch(
+                "core.scheduler.build_departure_decisions", return_value=[self._decision(changed_event, 25)]
+            ):
+                plans = build_daily_plans(self.settings, now=self.now, events=[changed_event], prior_plans=old)
+            self.assertEqual(plans[0].travel_minutes, 25)
+
+        driving = self._decision(event, 25, transport="driving")
+        with patch("core.scheduler.build_departure_decisions", return_value=[driving]):
+            plans = build_daily_plans(self.settings, now=self.now, events=[event], prior_plans=old)
+        self.assertEqual(plans[0].travel_minutes, 25)
+        self.assertIsNone(plans[0].trusted_travel_minutes)
+
+    def test_cache_and_estimate_cannot_increase_trusted_transit_baseline(self):
+        event = CalendarEvent("test", "Gangnam", datetime(2026, 4, 19, 19, 0, tzinfo=KST), "event-1")
+        with patch("core.scheduler.build_departure_decisions", return_value=[self._decision(event, 50)]):
+            prior = build_daily_plans(self.settings, now=self.now, events=[event])
+        for source, minutes in (("cache", 65), ("estimate", 30)):
+            with self.subTest(source=source), patch(
+                "core.scheduler.build_departure_decisions",
+                return_value=[self._decision(event, minutes, source=source)],
+            ):
+                plans = build_daily_plans(self.settings, now=self.now, events=[event], prior_plans=prior)
+            self.assertEqual(plans[0].travel_minutes, 50)
+            self.assertEqual(plans[0].trusted_travel_minutes, 50)
+            self.assertTrue(plans[0].is_estimated)
+
+        for source in ("cache", "estimate"):
+            with self.subTest(provisional_source=source), patch(
+                "core.scheduler.build_departure_decisions",
+                return_value=[self._decision(event, 30, source=source)],
+            ):
+                provisional = build_daily_plans(self.settings, now=self.now, events=[event])
+                self.assertIsNone(provisional[0].trusted_travel_minutes)
+                with patch("core.scheduler.build_departure_decisions", return_value=[self._decision(event, 20)]):
+                    recovered = build_daily_plans(self.settings, now=self.now, events=[event], prior_plans=provisional)
+                self.assertEqual(recovered[0].travel_minutes, 20)
+                self.assertEqual(recovered[0].trusted_travel_minutes, 20)
+
+    def test_large_travel_increase_is_urgent_until_event_starts(self):
+        plan = self._make_plan()
+        plan = SchedulePlan(**{**vars(plan), "event_start": datetime(2026, 4, 19, 19, 0, tzinfo=KST),
+            "departure_time": datetime(2026, 4, 19, 16, 0, tzinfo=KST)})
+        alert = ScheduledAlert("departure", plan.departure_time, plan)
+        self.assertEqual(classify_alert(alert, datetime(2026, 4, 19, 17, 0, tzinfo=KST), self.settings), "catch_up")
+        self.assertEqual(classify_alert(alert, plan.event_start + timedelta(minutes=1), self.settings), "expired")
+
+    def _decision(self, event, minutes, source="api", transport="transit"):
+        return DepartureDecision(
+            event=event, transport_mode=transport, travel_minutes=minutes,
+            buffer_minutes=10, departure_time=event.start_time - timedelta(minutes=minutes + 10),
+            should_alert=False, is_estimated=source == "estimate", provider="google",
+            travel_source=source,
+        )
+
     def test_newer_early_window_prep_seals_older_catch_up(self):
         plan = self._make_plan()
         now = datetime(2026, 4, 19, 13, 20, tzinfo=KST)
@@ -265,7 +341,7 @@ class SchedulerTests(unittest.TestCase):
 
         self.assertEqual(len(plans), 1)
         self.assertEqual(plans[0].event_id, "event-1")
-        mock_build.assert_called_once_with(self.settings, now=self.now)
+        mock_build.assert_called_once_with(self.settings, now=self.now, prior_plans=[])
 
     def test_load_or_build_daily_schedule_reuses_fresh_snapshot_when_ttl_enabled(self):
         settings = {
@@ -281,7 +357,7 @@ class SchedulerTests(unittest.TestCase):
                 json.dumps(
                     {
                         "date": self.now.date().isoformat(),
-                        "version": 2,
+                        "version": 3,
                         "built_at": (self.now - timedelta(minutes=5)).isoformat(),
                         "plans": [self._serialized_plan()],
                     }
@@ -319,6 +395,23 @@ class SchedulerTests(unittest.TestCase):
             ScheduledAlert("prep", stage.alert_time, plan, stage_id=stage.stage_id).dedup_key,
         )
         mock_build.assert_not_called()
+
+    def test_transit_baseline_survives_schedule_rebuild(self):
+        event = CalendarEvent("test", "Gangnam", datetime(2026, 4, 19, 19, 0, tzinfo=KST), "event-1")
+        with tempfile.TemporaryDirectory() as tempdir:
+            schedule_path = Path(tempdir) / "schedule_today.json"
+            with patch("core.scheduler.SCHEDULE_TODAY_PATH", schedule_path), patch(
+                "core.scheduler._get_today_events", return_value=[event]
+            ), patch("core.scheduler.build_departure_decisions", side_effect=[
+                [self._decision(event, 50)], [self._decision(event, 45)],
+            ]):
+                first = load_or_build_daily_schedule(self.settings, now=self.now)
+                second = load_or_build_daily_schedule(self.settings, now=self.now + timedelta(minutes=5))
+            snapshot = json.loads(schedule_path.read_text(encoding="utf-8"))
+        self.assertEqual(first[0].travel_minutes, 50)
+        self.assertEqual(second[0].travel_minutes, 50)
+        self.assertEqual(snapshot["plans"][0]["trusted_travel_minutes"], 50)
+        self.assertEqual(snapshot["plans"][0]["departure_time"], "2026-04-19T18:00:00+09:00")
 
     def test_schedule_rebuild_does_not_modify_dedup_state(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -361,7 +454,7 @@ class SchedulerTests(unittest.TestCase):
             {short_id(departure_alert.dedup_key): original_dedup[departure_alert.dedup_key]},
         )
         self.assertEqual(snapshot["built_at"], self.now.isoformat())
-        self.assertEqual(snapshot["version"], 2)
+        self.assertEqual(snapshot["version"], 3)
         self.assertEqual(snapshot["plans"][0]["stages"][-1]["label"], "출발")
         self.assertEqual(snapshot["plans"][0]["stages"][-1]["alert_key"], departure_alert.dedup_key)
         self.assertNotIn("prep_alert_time", snapshot["plans"][0])
