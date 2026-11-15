@@ -81,12 +81,12 @@ def main() -> int:
     print(f"Default transport: {settings['user'].get('default_transport', 'transit')}")
     print(f"Today's plans: {len(plans)}")
     for plan in plans:
-        prep_time = plan.prep_alert_time.strftime("%Y-%m-%d %H:%M") if plan.prep_alert_time else "disabled"
+        prep_count = len(plan.stages)
         print(
             "[smart-departure] plan "
             f"event_id={short_id(plan.event_id)} "
             f"start={plan.event_start.strftime('%Y-%m-%d %H:%M')} "
-            f"prep={prep_time} "
+            f"prep_stages={prep_count} "
             f"departure={plan.departure_time.strftime('%Y-%m-%d %H:%M')} "
             f"travel={plan.travel_minutes}m provider={plan.provider} "
             f"estimated={plan.is_estimated}"
@@ -95,7 +95,8 @@ def main() -> int:
     for alert in pending_alerts:
         print(
             "[smart-departure] due "
-            f"type={alert.alert_type} event_id={short_id(alert.event_id)} "
+            f"type={alert.alert_type} stage={short_id(alert.stage_id) if alert.stage_id else '-'} "
+            f"event_id={short_id(alert.event_id)} "
             f"alert_time={alert.alert_time.strftime('%Y-%m-%d %H:%M')} "
             f"classification={alert.classification}"
         )

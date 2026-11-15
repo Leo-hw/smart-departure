@@ -28,6 +28,7 @@ class CalendarEvent:
     start_time: datetime
     event_id: str
     transport_override: str | None = None
+    occasion_override: str | None = None
 
 
 def get_upcoming_events(lookahead_hours: int | None = None) -> list[CalendarEvent]:
@@ -146,12 +147,14 @@ def _normalize_event(item: dict[str, Any]) -> CalendarEvent | None:
         return None
 
     transport_override = _parse_transport_override(item.get("description"))
+    occasion_override = _parse_occasion_override(item.get("description"))
     return CalendarEvent(
         summary=summary,
         location=location,
         start_time=start_time,
         event_id=event_id,
         transport_override=transport_override,
+        occasion_override=occasion_override,
     )
 
 
@@ -178,3 +181,10 @@ def _parse_transport_override(description: Any) -> str | None:
     if transport not in ALLOWED_TRANSPORT_OVERRIDES:
         return None
     return transport
+
+
+def _parse_occasion_override(description: Any) -> str | None:
+    if not description:
+        return None
+    match = re.search(r"(?im)^\s*occasion\s*:\s*([a-z_]+)\s*$", str(description))
+    return match.group(1).lower() if match else None

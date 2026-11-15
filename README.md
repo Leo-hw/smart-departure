@@ -66,7 +66,7 @@ export TELEGRAM_CHAT_ID='your-telegram-chat-id'
 - 당일 일정 계획은 `.runtime/schedule_today.json`에 저장됩니다.
 - 기본값 `schedule.snapshot_ttl_minutes: 0`에서는 매 실행 캘린더를 다시 조회하고 계획을 재계산합니다.
 - TTL을 양수로 설정하면 같은 날짜의 신선한 스냅샷만 해당 시간 동안 재사용합니다.
-- 준비 알림은 `schedule.prep_minutes`, 출발 알림은 이동 시간과 버퍼 기준으로 계산됩니다.
+- 준비 알림은 `prep_profiles`에서 일정 제목 키워드로 선택된 단계별로 계산됩니다. 매칭되지 않으면 `casual`을 사용하며, 캘린더 설명에 `occasion: formal`처럼 적어 지정할 수 있습니다.
 - 놓친 출발 알림은 기본적으로 `schedule.departure_catchup_minutes: 45`까지 catch-up합니다.
 
 ## Dedup

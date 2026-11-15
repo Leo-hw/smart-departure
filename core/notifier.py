@@ -87,6 +87,7 @@ def format_scheduled_alert_message(alert: ScheduledAlert) -> str:
             late_marker,
             "",
             f"📅 일정: {alert.plan.summary}",
+            f"👔 지금: {alert.stage_label}" if alert.stage_label else None,
             f"🕐 준비 시작: {alert.alert_time.strftime('%Y-%m-%d %H:%M')}",
             f"⏰ 출발 예정: {alert.plan.departure_time.strftime('%Y-%m-%d %H:%M')}",
             f"🧭 경로 요약: {route_summary}",

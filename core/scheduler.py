@@ -14,6 +14,17 @@ from core.departure_engine import build_departure_decisions
 
 KST = ZoneInfo("Asia/Seoul")
 SCHEDULE_TODAY_PATH = Path(".runtime") / "schedule_today.json"
+SNAPSHOT_VERSION = 2
+
+
+@dataclass(frozen=True)
+class PrepStage:
+    label: str
+    alert_time: datetime
+
+    @property
+    def stage_id(self) -> str:
+        return self.label
 
 
 @dataclass(frozen=True)
@@ -29,6 +40,8 @@ class SchedulePlan:
     transport_mode: str
     provider: str
     buffer_minutes: int
+    occasion: str = "casual"
+    stages: tuple[PrepStage, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -39,6 +52,7 @@ class ScheduledAlert:
     classification: str = "on_time"
     evaluated_at: datetime | None = None
     stage_id: str | None = None
+    stage_label: str | None = None
 
     @property
     def dedup_key(self) -> str:
@@ -80,16 +94,13 @@ def build_daily_plans(
     """Create today's schedule plans from calendar events and travel times."""
     current_time = _ensure_kst(now or _current_time_kst())
     source_events = list(events) if events is not None else _get_today_events(current_time)
-    prep_minutes = int(settings.get("schedule", {}).get("prep_minutes", 0))
-
     decisions = build_departure_decisions(source_events, now=current_time)
     plans: list[SchedulePlan] = []
     for decision in decisions:
         if decision.event.start_time.date() != current_time.date():
             continue
-        prep_alert_time = (
-            decision.departure_time - timedelta(minutes=prep_minutes) if prep_minutes > 0 else None
-        )
+        occasion = classify_occasion(decision.event, settings)
+        stages = _build_stages(occasion, decision.departure_time, settings)
         plans.append(
             SchedulePlan(
                 event_id=decision.event.event_id,
@@ -99,10 +110,12 @@ def build_daily_plans(
                 travel_minutes=decision.travel_minutes,
                 is_estimated=decision.is_estimated,
                 departure_time=decision.departure_time,
-                prep_alert_time=prep_alert_time,
+                prep_alert_time=None,
                 transport_mode=decision.transport_mode,
                 provider=decision.provider,
                 buffer_minutes=decision.buffer_minutes,
+                occasion=occasion,
+                stages=stages,
             )
         )
 
@@ -131,8 +144,11 @@ def get_alert_candidates(
 
     candidates: list[ScheduledAlert] = []
     for plan in plans:
-        for prep_alert_time in _get_prep_alert_times(plan):
-            alert = ScheduledAlert(alert_type="prep", alert_time=prep_alert_time, plan=plan)
+        for stage in _get_prep_stages(plan):
+            alert = ScheduledAlert(
+                alert_type="prep", alert_time=stage.alert_time, plan=plan,
+                stage_id=stage.stage_id, stage_label=stage.label,
+            )
             classification = classify_alert(alert, current_time, settings)
             if classification in {"on_time", "catch_up"}:
                 candidates.append(
@@ -142,6 +158,8 @@ def get_alert_candidates(
                         plan=alert.plan,
                         classification=classification,
                         evaluated_at=current_time,
+                        stage_id=alert.stage_id,
+                        stage_label=alert.stage_label,
                     )
                 )
 
@@ -197,18 +215,13 @@ def select_latest_prep_alerts(
     now: datetime | None = None,
 ) -> tuple[list[ScheduledAlert], list[ScheduledAlert]]:
     """Select the latest eligible prep per event and seal older prep stages."""
-    current_time = _ensure_kst(now or _current_time_kst())
     alerts_list = list(alerts)
-    selected: list[ScheduledAlert] = [
-        alert
-        for alert in alerts_list
-        if alert.alert_type != "prep" or alert.alert_time > current_time
-    ]
+    selected: list[ScheduledAlert] = [alert for alert in alerts_list if alert.alert_type != "prep"]
     sealed: list[ScheduledAlert] = []
 
     prep_by_event: dict[str, list[ScheduledAlert]] = {}
     for alert in alerts_list:
-        if alert.alert_type == "prep" and alert.alert_time <= current_time:
+        if alert.alert_type == "prep":
             prep_by_event.setdefault(alert.event_id, []).append(alert)
 
     for event_alerts in prep_by_event.values():
@@ -221,13 +234,39 @@ def select_latest_prep_alerts(
     return selected, sealed
 
 
-def _get_prep_alert_times(plan: SchedulePlan) -> list[datetime]:
-    raw_times = getattr(plan, "prep_alert_times", None)
-    if raw_times is not None:
-        return sorted(
-            [_ensure_kst(value) for value in raw_times if isinstance(value, datetime)]
-        )
-    return [plan.prep_alert_time] if plan.prep_alert_time is not None else []
+def classify_occasion(event: CalendarEvent, settings: dict[str, Any]) -> str:
+    profiles = settings.get("prep_profiles", {})
+    override = event.occasion_override
+    if override in profiles:
+        return override
+    for name in ("formal", "semi_formal", "travel", "sports"):
+        keywords = profiles.get(name, {}).get("keywords", [])
+        if any(str(keyword).casefold() in event.summary.casefold() for keyword in keywords):
+            return name
+    return "casual"
+
+
+def _build_stages(
+    occasion: str, departure_time: datetime, settings: dict[str, Any]
+) -> tuple[PrepStage, ...]:
+    raw_stages = settings.get("prep_profiles", {}).get(occasion, {}).get("stages", [])
+    stages: list[PrepStage] = []
+    seen_labels: set[str] = set()
+    for raw in raw_stages:
+        label = str(raw["label"]).strip()
+        minutes = int(raw["minutes_before_departure"])
+        if not label or label in seen_labels or minutes < 0:
+            raise ValueError(f"Invalid prep stage in profile {occasion}")
+        seen_labels.add(label)
+        if minutes > 0:
+            stages.append(PrepStage(label, departure_time - timedelta(minutes=minutes)))
+    return tuple(sorted(stages, key=lambda stage: stage.alert_time))
+
+
+def _get_prep_stages(plan: SchedulePlan) -> list[PrepStage]:
+    if plan.stages:
+        return list(plan.stages)
+    return [PrepStage("준비 시작", plan.prep_alert_time)] if plan.prep_alert_time else []
 
 
 def _get_today_events(current_time: datetime) -> list[CalendarEvent]:
@@ -253,7 +292,7 @@ def _snapshot_is_fresh(
     now: datetime,
     ttl_minutes: int,
 ) -> bool:
-    if ttl_minutes <= 0 or snapshot.get("date") != now.date().isoformat():
+    if ttl_minutes <= 0 or snapshot.get("date") != now.date().isoformat() or snapshot.get("version") != SNAPSHOT_VERSION:
         return False
 
     built_at = snapshot.get("built_at")
@@ -272,6 +311,7 @@ def _snapshot_is_fresh(
 def _save_schedule_snapshot(built_at: datetime, plans: list[SchedulePlan]) -> None:
     SCHEDULE_TODAY_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {
+        "version": SNAPSHOT_VERSION,
         "date": built_at.date().isoformat(),
         "built_at": built_at.isoformat(),
         "plans": [_serialize_plan(plan) for plan in plans],
@@ -286,7 +326,19 @@ def _serialize_plan(plan: SchedulePlan) -> dict[str, Any]:
     payload = asdict(plan)
     payload["event_start"] = plan.event_start.isoformat()
     payload["departure_time"] = plan.departure_time.isoformat()
-    payload["prep_alert_time"] = plan.prep_alert_time.isoformat() if plan.prep_alert_time else None
+    payload.pop("prep_alert_time")
+    payload["stages"] = [
+        {
+            "label": stage.label,
+            "alert_time": stage.alert_time.isoformat(),
+            "alert_key": ScheduledAlert("prep", stage.alert_time, plan, stage_id=stage.stage_id).dedup_key,
+        }
+        for stage in plan.stages
+    ] + [{
+        "label": "출발",
+        "alert_time": plan.departure_time.isoformat(),
+        "alert_key": ScheduledAlert("departure", plan.departure_time, plan).dedup_key,
+    }]
     return payload
 
 
@@ -304,12 +356,15 @@ def _deserialize_plans(raw_plans: Iterable[dict[str, Any]]) -> list[SchedulePlan
                 travel_minutes=int(raw_plan["travel_minutes"]),
                 is_estimated=bool(raw_plan["is_estimated"]),
                 departure_time=_parse_datetime(str(raw_plan["departure_time"])),
-                prep_alert_time=(
-                    _parse_datetime(str(raw_plan["prep_alert_time"])) if raw_plan.get("prep_alert_time") else None
-                ),
+                prep_alert_time=None,
                 transport_mode=str(raw_plan["transport_mode"]),
                 provider=str(raw_plan["provider"]),
                 buffer_minutes=int(raw_plan["buffer_minutes"]),
+                occasion=str(raw_plan.get("occasion", "casual")),
+                stages=tuple(
+                    PrepStage(str(stage["label"]), _parse_datetime(str(stage["alert_time"])))
+                    for stage in raw_plan.get("stages", []) if stage.get("label") != "출발"
+                ),
             )
         )
     return plans
