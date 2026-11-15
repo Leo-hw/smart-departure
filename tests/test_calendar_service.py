@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import io
+import json
 import unittest
+from contextlib import redirect_stderr
 from datetime import datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
+
+from googleapiclient.errors import HttpError
+from httplib2 import Response
 
 from core import calendar_service
 
@@ -15,6 +21,8 @@ class _FakeRequest:
 
     def execute(self, num_retries=0):
         self.num_retries = num_retries
+        if isinstance(self._payload, Exception):
+            raise self._payload
         return self._payload
 
 
@@ -207,6 +215,77 @@ class CalendarServiceTests(unittest.TestCase):
         self.assertEqual(calendar_service._parse_transport_override("transport: walking"), "walking")
         self.assertIsNone(calendar_service._parse_transport_override("transport: bicycle"))
         self.assertIsNone(calendar_service._parse_transport_override("other: transit"))
+
+    def test_unavailable_calendar_does_not_block_healthy_calendar(self):
+        secret_id = "private-calendar-id@example.com"
+        secret_response = "private-address-and-credential"
+        failure = self._http_error(404, "notFound", secret_response)
+        service = _FakeService({
+            secret_id: failure,
+            "healthy-calendar": {"items": [{
+                "id": "event-1", "summary": "meeting", "location": "Seoul",
+                "start": {"dateTime": "2026-04-15T00:30:00Z"},
+            }]},
+        })
+        stderr = io.StringIO()
+        with self._calendar_context(f"{secret_id},healthy-calendar", service), redirect_stderr(stderr):
+            events = calendar_service.get_upcoming_events()
+
+        self.assertEqual([event.event_id for event in events], ["event-1"])
+        self.assertIn("slot=1 status=404", stderr.getvalue())
+        self.assertNotIn(secret_id, stderr.getvalue())
+        self.assertNotIn(secret_response, stderr.getvalue())
+        self.assertNotIn("meeting", stderr.getvalue())
+        self.assertEqual(len(service.events().calls), 2)
+
+    def test_403_permission_denied_skips_only_one_calendar(self):
+        service = _FakeService({
+            "blocked": self._http_error(403, "forbidden"),
+            "empty-but-accessible": {"items": []},
+        })
+        with self._calendar_context("blocked,empty-but-accessible", service), redirect_stderr(io.StringIO()):
+            self.assertEqual(calendar_service.get_upcoming_events(), [])
+
+    def test_all_calendars_unavailable_is_failure(self):
+        service = _FakeService({
+            "first": self._http_error(404, "notFound"),
+            "second": self._http_error(403, "forbidden"),
+        })
+        with self._calendar_context("first,second", service), redirect_stderr(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, "All configured calendars are unavailable"):
+                calendar_service.get_upcoming_events()
+
+    def test_global_http_and_network_failures_are_not_swallowed(self):
+        for failure in (
+            self._http_error(401, "authError"),
+            self._http_error(403, "quotaExceeded"),
+            self._http_error(403, "insufficientPermissions"),
+            self._http_error(429, "rateLimitExceeded"),
+            self._http_error(500, "backendError"),
+            OSError("network unavailable"),
+        ):
+            with self.subTest(failure=type(failure).__name__, status=getattr(getattr(failure, "resp", None), "status", None)):
+                service = _FakeService({"failed": failure, "next": {"items": []}})
+                with self._calendar_context("failed,next", service):
+                    with self.assertRaises(type(failure)):
+                        calendar_service.get_upcoming_events()
+                self.assertEqual(len(service.events().calls), 1)
+
+    def _calendar_context(self, calendar_ids, service):
+        from contextlib import ExitStack
+        stack = ExitStack()
+        stack.enter_context(patch.dict(calendar_service.os.environ, {"GOOGLE_CALENDAR_IDS": calendar_ids}))
+        stack.enter_context(patch.object(calendar_service, "load_settings", return_value=self.settings))
+        stack.enter_context(patch.object(calendar_service, "_build_calendar_service", return_value=service))
+        stack.enter_context(patch.object(
+            calendar_service, "_current_time_kst",
+            return_value=datetime(2026, 4, 15, 9, 0, tzinfo=ZoneInfo("Asia/Seoul")),
+        ))
+        return stack
+
+    def _http_error(self, status, reason, message="failure"):
+        content = json.dumps({"error": {"errors": [{"reason": reason}], "message": message}}).encode()
+        return HttpError(Response({"status": status}), content)
 
     def _restore_env(self, original_env):
         for key, value in original_env.items():

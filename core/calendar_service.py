@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
+
+from googleapiclient.errors import HttpError
 
 from shared.config.runtime_config import load_settings
 
@@ -17,6 +20,20 @@ SCOPES = ("https://www.googleapis.com/auth/calendar.readonly",)
 ALLOWED_TRANSPORT_OVERRIDES = {"transit", "driving", "walking"}
 DEFAULT_CALENDAR_TIMEOUT_SECONDS = 10
 CALENDAR_API_RETRIES = 3
+GLOBAL_403_REASONS = {
+    "accessNotConfigured",
+    "authError",
+    "billingNotEnabled",
+    "dailyLimitExceeded",
+    "dailyLimitExceededUnreg",
+    "insufficientPermissions",
+    "quotaExceeded",
+    "rateLimitExceeded",
+    "RESOURCE_EXHAUSTED",
+    "SERVICE_DISABLED",
+    "UNAUTHENTICATED",
+    "userRateLimitExceeded",
+}
 
 
 @dataclass(frozen=True)
@@ -46,20 +63,33 @@ def get_upcoming_events(lookahead_hours: int | None = None) -> list[CalendarEven
 
     seen_event_ids: set[str] = set()
     events: list[CalendarEvent] = []
+    accessible_calendars = 0
 
-    for calendar_id in calendar_ids:
-        response = (
-            service.events()
-            .list(
-                calendarId=calendar_id,
-                timeMin=now_kst.isoformat(),
-                timeMax=window_end.isoformat(),
-                singleEvents=True,
-                orderBy="startTime",
-                timeZone="Asia/Seoul",
+    for slot, calendar_id in enumerate(calendar_ids, start=1):
+        try:
+            response = (
+                service.events()
+                .list(
+                    calendarId=calendar_id,
+                    timeMin=now_kst.isoformat(),
+                    timeMax=window_end.isoformat(),
+                    singleEvents=True,
+                    orderBy="startTime",
+                    timeZone="Asia/Seoul",
+                )
+                .execute(num_retries=CALENDAR_API_RETRIES)
             )
-            .execute(num_retries=CALENDAR_API_RETRIES)
-        )
+        except HttpError as exc:
+            status = int(exc.resp.status)
+            if status not in {403, 404} or _is_global_403(exc):
+                raise
+            print(
+                f"[smart-departure] calendar unavailable: slot={slot} status={status}",
+                file=sys.stderr,
+            )
+            continue
+
+        accessible_calendars += 1
 
         for item in response.get("items", []):
             event = _normalize_event(item)
@@ -72,8 +102,25 @@ def get_upcoming_events(lookahead_hours: int | None = None) -> list[CalendarEven
             seen_event_ids.add(event.event_id)
             events.append(event)
 
+    if accessible_calendars == 0:
+        raise RuntimeError("All configured calendars are unavailable")
+
     events.sort(key=lambda event: event.start_time)
     return events
+
+
+def _is_global_403(exc: HttpError) -> bool:
+    if int(exc.resp.status) != 403:
+        return False
+    try:
+        payload = json.loads(exc.content)
+        error = payload.get("error", {})
+        reasons = {item.get("reason") for item in error.get("errors", []) if isinstance(item, dict)}
+        if isinstance(error.get("status"), str):
+            reasons.add(error["status"])
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return bool(reasons & GLOBAL_403_REASONS)
 
 
 def list_upcoming_events() -> list[CalendarEvent]:
