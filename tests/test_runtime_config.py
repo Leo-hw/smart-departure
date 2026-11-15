@@ -4,10 +4,15 @@ import os
 import unittest
 from unittest.mock import patch
 
-from shared.config.runtime_config import get_enabled_channels, validate_environment
+from shared.config.runtime_config import get_enabled_channels, load_settings, validate_environment
 
 
 class RuntimeConfigTests(unittest.TestCase):
+    def test_prep_profiles_load_with_stage_lists(self):
+        profiles = load_settings()["prep_profiles"]
+        self.assertEqual(set(profiles), {"formal", "semi_formal", "casual", "travel", "sports"})
+        self.assertEqual(profiles["formal"]["stages"][0]["minutes_before_departure"], 120)
+
     def test_get_enabled_channels_normalizes_unique_values(self):
         settings = {
             "notification": {

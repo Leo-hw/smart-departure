@@ -18,9 +18,51 @@ schedule:
   lookahead_hours: 3
   alert_window_minutes: 15
   departure_catchup_minutes: 45
-  prep_minutes: 60
   snapshot_ttl_minutes: 0
   dedup_ttl_minutes: 60
+
+prep_profiles:
+  formal:
+    keywords: ["면접", "인터뷰", "결혼식", "웨딩", "장례", "발표", "프레젠테이션", "비즈니스 미팅"]
+    stages:
+      - label: "샤워 & 준비 시작"
+        minutes_before_departure: 120
+      - label: "옷 입기 (정장)"
+        minutes_before_departure: 45
+      - label: "출발"
+        minutes_before_departure: 0
+  semi_formal:
+    keywords: ["소개팅", "데이트", "네트워킹", "커피챗", "동창회", "동문회", "공연", "콘서트", "전시"]
+    stages:
+      - label: "씻고 준비 시작"
+        minutes_before_departure: 90
+      - label: "옷 입기"
+        minutes_before_departure: 30
+      - label: "출발"
+        minutes_before_departure: 0
+  casual:
+    keywords: []
+    stages:
+      - label: "준비 시작"
+        minutes_before_departure: 60
+      - label: "출발"
+        minutes_before_departure: 0
+  travel:
+    keywords: ["여행", "공항", "출국", "캠핑", "글램핑"]
+    stages:
+      - label: "짐 챙기기 시작"
+        minutes_before_departure: 180
+      - label: "최종 짐 확인"
+        minutes_before_departure: 30
+      - label: "출발"
+        minutes_before_departure: 0
+  sports:
+    keywords: ["운동", "헬스", "필라테스", "요가", "등산", "축구", "농구", "테니스"]
+    stages:
+      - label: "운동복 & 장비 챙기기"
+        minutes_before_departure: 30
+      - label: "출발"
+        minutes_before_departure: 0
 
 notification:
   enabled_channels: ["discord"]

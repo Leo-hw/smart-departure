@@ -68,7 +68,7 @@ class CalendarServiceTests(unittest.TestCase):
                             "summary": "Morning standup",
                             "location": "Gangnam",
                             "start": {"dateTime": "2026-04-15T00:30:00Z"},
-                            "description": "transport: driving\nbring laptop",
+                            "description": "transport: driving\noccasion: formal\nbring laptop",
                         },
                         {
                             "id": "event-empty-location",
@@ -124,6 +124,7 @@ class CalendarServiceTests(unittest.TestCase):
         self.assertEqual(events[0].location, "Gangnam")
         self.assertEqual(events[0].start_time, datetime(2026, 4, 15, 9, 30, tzinfo=ZoneInfo("Asia/Seoul")))
         self.assertEqual(events[0].transport_override, "driving")
+        self.assertEqual(events[0].occasion_override, "formal")
         self.assertEqual(events[1].start_time, datetime(2026, 4, 15, 10, 15, tzinfo=ZoneInfo("Asia/Seoul")))
         self.assertIsNone(events[1].transport_override)
         self.assertEqual(events[0].start_time.tzinfo.key, "Asia/Seoul")

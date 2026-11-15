@@ -85,6 +85,18 @@ class NotifierTests(unittest.TestCase):
         self.assertIn("강남구 역삼동 OO카페", departure_message)
         self.assertIn("경로 요약", departure_message)
 
+    def test_prep_stage_message_names_action(self):
+        plan = SchedulePlan(
+            event_id="event-1", summary="면접", location="강남",
+            event_start=datetime(2026, 4, 16, 15, 0, tzinfo=KST),
+            travel_minutes=35, is_estimated=False,
+            departure_time=datetime(2026, 4, 16, 14, 15, tzinfo=KST),
+            prep_alert_time=None, transport_mode="transit", provider="google", buffer_minutes=10,
+        )
+        alert = ScheduledAlert("prep", datetime(2026, 4, 16, 12, 15, tzinfo=KST), plan,
+            stage_id="샤워 & 준비 시작", stage_label="샤워 & 준비 시작")
+        self.assertIn("지금: 샤워 & 준비 시작", format_scheduled_alert_message(alert))
+
     def test_format_scheduled_alert_message_marks_catch_up(self):
         plan = SchedulePlan(
             event_id="event-1",

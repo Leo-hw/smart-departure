@@ -108,29 +108,38 @@ def _read_yaml_settings(path: Path) -> dict[str, Any]:
 
 
 def _parse_simple_yaml(raw_text: str) -> dict[str, Any]:
-    """Parse the limited nested mapping structure used by settings.yaml."""
+    """Parse the nested mappings and stage lists used by settings.yaml."""
     root: dict[str, Any] = {}
-    stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
+    stack: list[tuple[int, dict[str, Any] | list[Any]]] = [(-1, root)]
+    lines = [line for line in raw_text.splitlines() if line.strip() and not line.lstrip().startswith("#")]
 
-    for raw_line in raw_text.splitlines():
-        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
-            continue
-
+    for index, raw_line in enumerate(lines):
         indent = len(raw_line) - len(raw_line.lstrip(" "))
         stripped = raw_line.strip()
-        if ":" not in stripped:
-            raise ValueError(f"Unsupported YAML line: {stripped}")
-
-        key, value = stripped.split(":", 1)
-        key = key.strip()
-        value = value.strip()
 
         while len(stack) > 1 and indent <= stack[-1][0]:
             stack.pop()
 
         parent = stack[-1][1]
+        if stripped.startswith("- "):
+            if not isinstance(parent, list):
+                raise ValueError(f"Unexpected YAML list item: {stripped}")
+            item: dict[str, Any] = {}
+            parent.append(item)
+            stack.append((indent, item))
+            parent = item
+            stripped = stripped[2:]
+
+        if ":" not in stripped:
+            raise ValueError(f"Unsupported YAML line: {stripped}")
+        key, value = stripped.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if not isinstance(parent, dict):
+            raise ValueError(f"Unsupported YAML mapping: {stripped}")
         if value == "":
-            container: dict[str, Any] = {}
+            next_line = lines[index + 1].strip() if index + 1 < len(lines) else ""
+            container: dict[str, Any] | list[Any] = [] if next_line.startswith("- ") else {}
             parent[key] = container
             stack.append((indent, container))
             continue
