@@ -15,9 +15,17 @@
 | Actions cache 단일 파일화 | ✅ | `.runtime/sent_alerts.json`만 보존 |
 | dedup 키와 레코드 해시화 | ✅ | 원문 event ID 필드 제거 |
 | 기존 평문 cache 마이그레이션 | ✅ | 로드 시 키 해시화 및 민감 필드 제거 |
-| 단위 및 회귀 테스트 | ✅ | 전체 48개 테스트 통과 |
+| 단위 및 회귀 테스트 | ✅ | 구현 당시 48개, 2026-11-17 현재 전체 68개 테스트 통과 |
 | 과거 Actions runs/caches purge | ✅ | workflow runs 560개, caches 35개 삭제 후 잔존 0 확인 |
-| 재공개 실제 알림/로그 확인 | ⚠️ | 사용자 재공개 후 운영 검증 필요 |
+| 재공개 실제 알림/로그 확인 | ⚠️ | 폰 전송 성공 로그와 로그 패턴 검사는 확인; Discord 실제 수신 확인 대기 |
+
+## 2026-11-17 운영 재검증
+
+- GitHub 저장소 가시성은 `PUBLIC`이고 Actions 캐시는 0개다.
+- Actions 실행 기록은 1,225건이며 가장 오래된 기록은 2026-06-08 21:46 KST로 T-013 수정 및 과거 기록 삭제 후 생성됐다. 따라서 현재 기록 수 0을 기대해서는 안 된다.
+- 폰 서비스는 2026-11-15 17:35, 17:50 KST에 각각 `Notifications attempted: 1`을 기록했고 같은 기간의 `delivery failed`/`startup failed`는 검출되지 않았다. 이는 앱의 전송 성공 판정이지 Discord 클라이언트 수신 증거는 아니다.
+- 2026-11-15 이후 폰 서비스 로그에서 `summary=`, `location=`, 웹훅 URL 및 로컬 사용자 경로 패턴은 0건이었다. 이 패턴 검사만으로 모든 종류의 개인정보 부재를 증명하지는 않는다.
+- `python3 -m unittest discover -s tests -v`: 68개 통과. Discord 수신이 확인되기 전에는 마지막 AC를 완료 처리하지 않는다.
 
 ## 원래 기획과 달라진 점
 
@@ -26,10 +34,10 @@
 ## 발생한 에러/이슈
 
 - 기존 평문 cache는 최초 로드 시 해시 형식으로 자동 변환되어 파일에 다시 저장됨
-- GitHub API purge 후 저장소 `private=true`, workflow runs 0개, Actions caches 0개 확인
+- 2026-06-08 GitHub API purge 직후 저장소 `private=true`, workflow runs 0개, Actions caches 0개 확인. 이후 저장소가 다시 public이 되었고 새 Actions 기록이 생성됐다.
 
 ## 다음 작업자에게 전달할 주의사항
 
 - `short_id()`는 로그와 dedup 저장에만 사용하고 Discord 알림 본문에는 적용하지 않음
-- 저장소 재공개 전 과거 Actions run 및 cache 삭제 완료 여부를 확인해야 함
-- 재공개 검증 완료 전까지 T-009를 시작하지 않음
+- 재공개 전 과거 Actions run 및 cache 삭제는 완료됐다. 이후 새로 생성된 실행 기록은 과거 노출분과 구분한다.
+- T-009는 이미 완료됐다. 현재 남은 것은 Discord 실제 수신 확인과 T-013의 최종 상태 갱신이다.
