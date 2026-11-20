@@ -9,7 +9,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from core.calendar_service import CalendarEvent
-from core.dedup import filter_pending_decisions
+from core.dedup import filter_pending_decisions, mark_successful_deliveries
 from core.departure_engine import DepartureDecision
 from core.route_guide import RouteGuide, RouteSegment
 from core.privacy import short_id
@@ -119,6 +119,8 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(actual, ["18:00", "18:00", "18:00", "17:55", "17:55"])
         self.assertEqual(prior[0].trusted_travel_minutes, 55)
         self.assertEqual(prior[0].travel_minutes, 55)
+        self.assertEqual(prior[0].current_travel_minutes, 46)
+        self.assertFalse(prior[0].is_estimated)
 
     def test_editing_start_location_or_transport_resets_transit_baseline(self):
         event = CalendarEvent("test", "Gangnam", datetime(2026, 4, 19, 19, 0, tzinfo=KST), "event-1")
@@ -154,6 +156,7 @@ class SchedulerTests(unittest.TestCase):
             self.assertEqual(plans[0].travel_minutes, 50)
             self.assertEqual(plans[0].trusted_travel_minutes, 50)
             self.assertTrue(plans[0].is_estimated)
+            self.assertIsNone(plans[0].current_travel_minutes)
 
         for source in ("cache", "estimate"):
             with self.subTest(provisional_source=source), patch(
@@ -200,6 +203,29 @@ class SchedulerTests(unittest.TestCase):
 
         self.assertEqual([item.alert_type for item in prep_due], ["prep"])
         self.assertEqual([item.alert_type for item in departure_due], ["departure"])
+
+    def test_early_departure_send_is_not_repeated_at_planned_time(self):
+        plan = self._make_plan()
+        early_time = plan.departure_time - timedelta(minutes=13)
+        with tempfile.TemporaryDirectory() as tempdir, patch(
+            "core.dedup.SENT_ALERTS_PATH", Path(tempdir) / "sent_alerts.json"
+        ):
+            early = [
+                alert for alert in get_due_alerts([plan], self.settings, now=early_time)
+                if alert.alert_type == "departure"
+            ]
+            self.assertEqual([alert.alert_type for alert in early], ["departure"])
+            pending, _ = filter_pending_decisions(early, self.settings, now=early_time)
+            mark_successful_deliveries(pending, self.settings, now=early_time)
+            at_departure = [
+                alert for alert in get_due_alerts([plan], self.settings, now=plan.departure_time)
+                if alert.alert_type == "departure"
+            ]
+            later_pending, skipped = filter_pending_decisions(
+                at_departure, self.settings, now=plan.departure_time
+            )
+        self.assertEqual(later_pending, [])
+        self.assertEqual([alert.dedup_key for alert in skipped], [early[0].dedup_key])
 
     def test_classify_alert_on_time_catch_up_and_expired(self):
         plan = self._make_plan()
@@ -430,7 +456,10 @@ class SchedulerTests(unittest.TestCase):
             snapshot = json.loads(schedule_path.read_text(encoding="utf-8"))
         self.assertEqual(first[0].travel_minutes, 50)
         self.assertEqual(second[0].travel_minutes, 50)
+        self.assertEqual(second[0].current_travel_minutes, 45)
+        self.assertFalse(second[0].is_estimated)
         self.assertEqual(snapshot["plans"][0]["trusted_travel_minutes"], 50)
+        self.assertEqual(snapshot["plans"][0]["current_travel_minutes"], 45)
         self.assertEqual(snapshot["plans"][0]["departure_time"], "2026-04-19T18:00:00+09:00")
 
     def test_schedule_rebuild_does_not_modify_dedup_state(self):
