@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from core.calendar_service import CalendarEvent, get_upcoming_events
 from core.departure_engine import DepartureDecision, build_departure_decisions
+from core.route_guide import RouteGuide
 
 KST = ZoneInfo("Asia/Seoul")
 SCHEDULE_TODAY_PATH = Path(".runtime") / "schedule_today.json"
@@ -44,6 +45,7 @@ class SchedulePlan:
     stages: tuple[PrepStage, ...] = ()
     travel_source: str = "api"
     trusted_travel_minutes: int | None = None
+    route_guide: RouteGuide | None = None
 
 
 @dataclass(frozen=True)
@@ -134,6 +136,7 @@ def build_daily_plans(
                 stages=stages,
                 travel_source=decision.travel_source,
                 trusted_travel_minutes=trusted_minutes,
+                route_guide=decision.route_guide,
             )
         )
 
@@ -371,6 +374,8 @@ def _save_schedule_snapshot(built_at: datetime, plans: list[SchedulePlan]) -> No
 
 def _serialize_plan(plan: SchedulePlan) -> dict[str, Any]:
     payload = asdict(plan)
+    # Route instructions are transient Google Maps content, not snapshot data.
+    payload.pop("route_guide")
     payload["event_start"] = plan.event_start.isoformat()
     payload["departure_time"] = plan.departure_time.isoformat()
     payload.pop("prep_alert_time")

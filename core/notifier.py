@@ -7,10 +7,13 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Iterable
+from zoneinfo import ZoneInfo
 
 from core.departure_engine import DepartureDecision
 from core.privacy import safe_exception_label
+from core.route_guide import RouteGuide
 from core.scheduler import ScheduledAlert
 from shared.config.runtime_config import get_enabled_channels, load_settings
 
@@ -70,7 +73,7 @@ def format_departure_message(decision: DepartureDecision) -> str:
             f"🕐 시작: {decision.event.start_time.strftime('%Y-%m-%d %H:%M')}",
             f"🚌 이동: {transport_label} 약 {decision.travel_minutes}분{estimate_suffix}",
             f"⏰ 출발: {decision.departure_time.strftime('%Y-%m-%d %H:%M')} (버퍼 {decision.buffer_minutes}분)",
-        ]
+        ] + _format_route_guide(decision.route_guide, decision.provider)
     )
 
 
@@ -79,6 +82,10 @@ def format_scheduled_alert_message(alert: ScheduledAlert) -> str:
     transport_label = TRANSPORT_LABELS.get(alert.plan.transport_mode, alert.plan.transport_mode)
     estimate_suffix = " (이동 시간 추정)" if alert.plan.is_estimated else ""
     route_summary = f"{transport_label} 약 {alert.plan.travel_minutes}분{estimate_suffix}"
+    guide_lines = _format_route_guide(
+        alert.plan.route_guide, alert.plan.provider,
+        include_board_time=alert.alert_type == "departure",
+    )
     late_marker = _format_late_marker(alert)
 
     if alert.alert_type == "prep":
@@ -92,7 +99,9 @@ def format_scheduled_alert_message(alert: ScheduledAlert) -> str:
             f"⏰ 출발 예정: {alert.plan.departure_time.strftime('%Y-%m-%d %H:%M')}",
             f"🧭 경로 요약: {route_summary}",
         ]
-        return "\n".join(line for line in lines if line is not None)
+        return "\n".join(line for line in lines if line is not None) + (
+            "\n" + "\n".join(guide_lines) if guide_lines else ""
+        )
 
     lines = [
         "🚀 출발할 시간이에요!",
@@ -105,7 +114,54 @@ def format_scheduled_alert_message(alert: ScheduledAlert) -> str:
         f"⏰ 출발: {alert.plan.departure_time.strftime('%Y-%m-%d %H:%M')} (버퍼 {alert.plan.buffer_minutes}분)",
         f"🧭 경로 요약: {route_summary}",
     ]
-    return "\n".join(line for line in lines if line is not None)
+    return "\n".join(line for line in lines if line is not None) + (
+        "\n" + "\n".join(guide_lines) if guide_lines else ""
+    )
+
+
+def _format_route_guide(
+    guide: RouteGuide | None, provider: str, include_board_time: bool = True
+) -> list[str]:
+    if guide is None or not guide.segments:
+        return []
+    lines = ["🗺️ 이동 경로 (현재 조회 기준, 출발 전 재확인):"]
+    transit_count = 0
+    for segment in guide.segments[:6]:
+        if segment.mode == "walk":
+            if segment.distance_meters:
+                lines.append(f"  • 도보 약 {segment.distance_meters}m")
+        elif segment.mode == "transit":
+            transfer = "환승 · " if transit_count else ""
+            transit_count += 1
+            line = _clean_route_text(segment.line) or "대중교통"
+            origin = _clean_route_text(segment.origin)
+            destination = _clean_route_text(segment.destination)
+            path = f"{origin} → {destination}" if origin and destination else origin or destination
+            stop_count = f" ({segment.stop_count}정거장)" if segment.stop_count else ""
+            board_time = _format_board_time(segment.departure_time) if include_board_time else ""
+            lines.append(
+                f"  • {transfer}{board_time}{line}: {path}{stop_count}"
+                if path else f"  • {transfer}{board_time}{line}"
+            )
+    if len(guide.segments) > 6:
+        lines.append("  • 나머지 구간은 지도 앱에서 확인")
+    if provider == "google":
+        lines.append("경로 정보: Google Maps")
+    return lines
+
+
+def _clean_route_text(value: str | None) -> str:
+    return " ".join(value.split())[:60] if isinstance(value, str) else ""
+
+
+def _format_board_time(value: str | None) -> str:
+    if not value:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    return parsed.astimezone(ZoneInfo("Asia/Seoul")).strftime("%H:%M ")
 
 
 def _format_late_marker(alert: ScheduledAlert) -> str | None:

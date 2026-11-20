@@ -48,7 +48,9 @@ class MapsServiceTests(unittest.TestCase):
         self.assertEqual(request.full_url, "https://routes.googleapis.com/directions/v2:computeRoutes")
         self.assertEqual(request.get_method(), "POST")
         self.assertEqual(request.get_header("X-goog-api-key"), "test-key")
-        self.assertEqual(request.get_header("X-goog-fieldmask"), "routes.duration")
+        field_mask = request.get_header("X-goog-fieldmask")
+        self.assertIn("routes.duration", field_mask)
+        self.assertIn("routes.legs.steps.transitDetails.stopDetails.departureStop.name", field_mask)
         self.assertNotIn("test-key", request.full_url)
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["origin"], {"address": "Seoul Station"})
@@ -61,6 +63,74 @@ class MapsServiceTests(unittest.TestCase):
         self.assertEqual(
             cache_data["Seoul Station|Gangnam Station|transit"]["duration_minutes"], 35
         )
+
+    def test_transit_route_normalizes_segments(self):
+        response = self._routes_response({"routes": [{
+            "duration": "2100s",
+            "legs": [{"steps": [
+                {"travelMode": "WALK", "distanceMeters": 120},
+                {"travelMode": "WALK", "distanceMeters": 80},
+                {"travelMode": "TRANSIT", "transitDetails": {
+                    "transitLine": {"nameShort": "2호선"},
+                    "stopDetails": {
+                        "departureStop": {"name": "강남역"},
+                        "arrivalStop": {"name": "시청역"},
+                        "departureTime": "2026-04-16T05:30:00Z",
+                    },
+                    "stopCount": 8,
+                }},
+                {"travelMode": "WALK", "distanceMeters": 250},
+            ]}],
+        }]})
+        with self._patch_context(), patch.dict(
+            "os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}, clear=False
+        ), patch.object(maps_service.urllib.request, "urlopen", return_value=response) as mock_urlopen:
+            result = maps_service.get_travel_time("Home", "Office", "transit")
+
+        body = json.loads(mock_urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertNotIn("arrivalTime", body)
+        self.assertEqual([segment.mode for segment in result.route_guide.segments], ["walk", "transit", "walk"])
+        self.assertEqual(result.route_guide.segments[0].distance_meters, 200)
+        self.assertEqual(result.route_guide.segments[1].line, "2호선")
+        self.assertEqual(result.route_guide.segments[1].origin, "강남역")
+        self.assertEqual(result.route_guide.segments[1].stop_count, 8)
+        cache_text = self.cache_path.read_text(encoding="utf-8")
+        self.assertNotIn("강남역", cache_text)
+        self.assertNotIn("route_guide", cache_text)
+
+    def test_transit_without_steps_keeps_duration_only(self):
+        response = self._routes_response({"routes": [{"duration": "2100s"}]})
+        with self._patch_context(), patch.dict(
+            "os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}, clear=False
+        ), patch.object(maps_service.urllib.request, "urlopen", return_value=response):
+            result = maps_service.get_travel_time("Home", "Office", "transit")
+        self.assertEqual(result.duration_minutes, 35)
+        self.assertIsNone(result.route_guide)
+
+    def test_transit_malformed_steps_do_not_discard_duration(self):
+        response = self._routes_response({"routes": [{"duration": "2100s", "legs": [None, {"steps": [None]}]}]})
+        with self._patch_context(), patch.dict(
+            "os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}, clear=False
+        ), patch.object(maps_service.urllib.request, "urlopen", return_value=response):
+            result = maps_service.get_travel_time("Home", "Office", "transit")
+        self.assertEqual(result.duration_minutes, 35)
+        self.assertIsNone(result.route_guide)
+
+    def test_transit_cache_fallback_has_no_stale_instructions(self):
+        cache_payload = {
+            maps_service._cache_key("Home", "Office", "transit"): {
+                "duration_minutes": 42, "cached_at": self.fixed_now.isoformat(),
+            }
+        }
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        self.cache_path.write_text(json.dumps(cache_payload), encoding="utf-8")
+        with self._patch_context(), patch.dict(
+            "os.environ", {"GOOGLE_MAPS_API_KEY": "test-key"}, clear=False
+        ), patch.object(maps_service.urllib.request, "urlopen", side_effect=OSError("offline")):
+            result = maps_service.get_travel_time("Home", "Office", "transit")
+        self.assertEqual(result.duration_minutes, 42)
+        self.assertEqual(result.source, "cache")
+        self.assertIsNone(result.route_guide)
 
     def test_routes_api_maps_walking_and_unknown_modes(self):
         for mode, expected in (("walking", "WALK"), ("bicycling", "TRANSIT")):
