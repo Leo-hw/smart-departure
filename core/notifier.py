@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 from core.departure_engine import DepartureDecision
 from core.privacy import safe_exception_label
 from core.route_guide import RouteGuide
-from core.scheduler import ScheduledAlert
+from core.scheduler import SchedulePlan, ScheduledAlert
 from shared.config.runtime_config import get_enabled_channels, load_settings
 
 CHANNEL_LABELS = {
@@ -80,11 +80,14 @@ def format_departure_message(decision: DepartureDecision) -> str:
 def format_scheduled_alert_message(alert: ScheduledAlert) -> str:
     """Render prep/departure messages from scheduled alert plans."""
     transport_label = TRANSPORT_LABELS.get(alert.plan.transport_mode, alert.plan.transport_mode)
-    estimate_suffix = " (이동 시간 추정)" if alert.plan.is_estimated else ""
-    route_summary = f"{transport_label} 약 {alert.plan.travel_minutes}분{estimate_suffix}"
+    route_summary = (
+        f"{transport_label} 약 {alert.plan.travel_minutes}분"
+        f"{_travel_basis_suffix(alert.plan)}"
+    )
     guide_lines = _format_route_guide(
         alert.plan.route_guide, alert.plan.provider,
         include_board_time=alert.alert_type == "departure",
+        earliest_board_time=alert.plan.departure_time,
     )
     late_marker = _format_late_marker(alert)
 
@@ -104,7 +107,7 @@ def format_scheduled_alert_message(alert: ScheduledAlert) -> str:
         )
 
     lines = [
-        "🚀 출발할 시간이에요!",
+        _departure_heading(alert),
         late_marker,
         "",
         f"📅 일정: {alert.plan.summary}",
@@ -120,11 +123,18 @@ def format_scheduled_alert_message(alert: ScheduledAlert) -> str:
 
 
 def _format_route_guide(
-    guide: RouteGuide | None, provider: str, include_board_time: bool = True
+    guide: RouteGuide | None, provider: str, include_board_time: bool = True,
+    earliest_board_time: datetime | None = None,
 ) -> list[str]:
     if guide is None or not guide.segments:
         return []
     lines = ["🗺️ 이동 경로 (현재 조회 기준, 출발 전 재확인):"]
+    early_boarding = include_board_time and earliest_board_time is not None and any(
+        (board_time := _parse_board_time(segment.departure_time)) is not None
+        and board_time < earliest_board_time
+        for segment in guide.segments
+        if segment.mode == "transit"
+    )
     transit_count = 0
     for segment in guide.segments[:6]:
         if segment.mode == "walk":
@@ -138,13 +148,18 @@ def _format_route_guide(
             destination = _clean_route_text(segment.destination)
             path = f"{origin} → {destination}" if origin and destination else origin or destination
             stop_count = f" ({segment.stop_count}정거장)" if segment.stop_count else ""
-            board_time = _format_board_time(segment.departure_time) if include_board_time else ""
+            board_time = (
+                _format_board_time(segment.departure_time)
+                if include_board_time and not early_boarding else ""
+            )
             lines.append(
                 f"  • {transfer}{board_time}{line}: {path}{stop_count}"
                 if path else f"  • {transfer}{board_time}{line}"
             )
     if len(guide.segments) > 6:
         lines.append("  • 나머지 구간은 지도 앱에서 확인")
+    if early_boarding:
+        lines.append("  • 조회된 탑승편이 출발 예정 시각보다 빨라 탑승 시각을 생략했어요. 지도 앱에서 다시 확인하세요.")
     if provider == "google":
         lines.append("경로 정보: Google Maps")
     return lines
@@ -155,20 +170,52 @@ def _clean_route_text(value: str | None) -> str:
 
 
 def _format_board_time(value: str | None) -> str:
+    parsed = _parse_board_time(value)
+    return parsed.astimezone(ZoneInfo("Asia/Seoul")).strftime("%H:%M ") if parsed else ""
+
+
+def _parse_board_time(value: str | None) -> datetime | None:
     if not value:
-        return ""
+        return None
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
-        return ""
-    return parsed.astimezone(ZoneInfo("Asia/Seoul")).strftime("%H:%M ")
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _departure_heading(alert: ScheduledAlert) -> str:
+    now = alert.evaluated_at or alert.alert_time
+    seconds_until = (alert.alert_time - now).total_seconds()
+    if seconds_until > 0:
+        minutes_until = int((seconds_until + 59) // 60)
+        return f"🚀 출발 예정까지 약 {minutes_until}분 남았어요!"
+    if seconds_until < 0:
+        return "🚀 출발 예정 시각이 지났어요!"
+    return "🚀 출발할 시간이에요!"
+
+
+def _travel_basis_suffix(plan: SchedulePlan) -> str:
+    if (
+        plan.travel_source == "api"
+        and plan.current_travel_minutes is not None
+        and plan.travel_minutes > plan.current_travel_minutes
+    ):
+        return f" (보수적 계획값; 현재 조회 경로 {plan.current_travel_minutes}분)"
+    if plan.travel_source == "cache":
+        if plan.trusted_travel_minutes is not None:
+            return " (현재 조회 불가 · 이전 정상 조회값 유지)"
+        return " (현재 조회 불가 · 최근 캐시 사용)"
+    if plan.travel_source == "estimate":
+        if plan.trusted_travel_minutes is not None:
+            return " (현재 조회 불가 · 이전 정상 조회값 유지)"
+        return " (현재 조회 불가 · 기본 이동 시간 추정)"
+    return " (이동 시간 추정)" if plan.is_estimated else ""
 
 
 def _format_late_marker(alert: ScheduledAlert) -> str | None:
-    if not alert.is_late:
-        return None
     now = alert.evaluated_at
-    if now is None:
+    if now is None or now <= alert.alert_time:
         return None
     return (
         "⚠️ 늦었어요 — 원래 "

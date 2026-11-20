@@ -4,7 +4,7 @@ import json
 import os
 import unittest
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -161,6 +161,88 @@ class NotifierTests(unittest.TestCase):
         message = format_scheduled_alert_message(alert)
 
         self.assertIn("⚠️ 늦었어요 — 원래 2026-04-16 13:15 예정, 지금 2026-04-16 13:40", message)
+
+    def test_departure_copy_distinguishes_early_exact_and_late_delivery(self):
+        plan = SchedulePlan(
+            event_id="event-1", summary="스터디", location="강남",
+            event_start=self.decision.event.start_time, travel_minutes=35,
+            is_estimated=False, departure_time=self.decision.departure_time,
+            prep_alert_time=None, transport_mode="transit", provider="google",
+            buffer_minutes=10,
+        )
+        departure = plan.departure_time
+        cases = (
+            (departure - timedelta(minutes=13), "출발 예정까지 약 13분", "늦었어요", False),
+            (departure, "출발할 시간이에요", "늦었어요", False),
+            (departure + timedelta(minutes=5), "출발 예정 시각이 지났어요", "늦었어요", True),
+        )
+        for evaluated_at, heading, marker, has_marker in cases:
+            with self.subTest(evaluated_at=evaluated_at):
+                alert = ScheduledAlert("departure", departure, plan, evaluated_at=evaluated_at)
+                message = format_scheduled_alert_message(alert)
+                self.assertIn(heading, message)
+                self.assertEqual(marker in message, has_marker)
+
+    def test_conservative_minutes_are_not_called_api_estimate(self):
+        plan = SchedulePlan(
+            event_id="event-1", summary="스터디", location="강남",
+            event_start=self.decision.event.start_time, travel_minutes=35,
+            is_estimated=False, departure_time=self.decision.departure_time,
+            prep_alert_time=None, transport_mode="transit", provider="google",
+            buffer_minutes=10, current_travel_minutes=28,
+        )
+        for alert_type in ("prep", "departure"):
+            with self.subTest(alert_type=alert_type):
+                message = format_scheduled_alert_message(
+                    ScheduledAlert(alert_type, plan.departure_time, plan)
+                )
+                self.assertIn("보수적 계획값; 현재 조회 경로 28분", message)
+                self.assertNotIn("이동 시간 추정", message)
+
+    def test_fallback_copy_distinguishes_cache_and_default_estimate(self):
+        plan = SchedulePlan(
+            event_id="event-1", summary="스터디", location="강남",
+            event_start=self.decision.event.start_time, travel_minutes=35,
+            is_estimated=True, departure_time=self.decision.departure_time,
+            prep_alert_time=None, transport_mode="transit", provider="google",
+            buffer_minutes=10,
+        )
+        cases = (
+            ("cache", None, "최근 캐시 사용"),
+            ("estimate", None, "기본 이동 시간 추정"),
+            ("cache", 35, "이전 정상 조회값 유지"),
+            ("estimate", 35, "이전 정상 조회값 유지"),
+        )
+        for source, trusted, expected in cases:
+            with self.subTest(source=source, trusted=trusted):
+                changed = replace(plan, travel_source=source, trusted_travel_minutes=trusted)
+                message = format_scheduled_alert_message(
+                    ScheduledAlert("departure", changed.departure_time, changed)
+                )
+                self.assertIn(expected, message)
+
+    def test_boarding_before_planned_departure_is_not_presented_as_catchable(self):
+        guide = RouteGuide((
+            RouteSegment("transit", line="2호선", origin="합정", destination="구로디지털단지",
+                         departure_time="2026-04-16T05:10:00Z"),
+            RouteSegment("transit", line="1호선", origin="구로디지털단지", destination="서울역",
+                         departure_time="2026-04-16T05:30:00Z"),
+        ))
+        plan = SchedulePlan(
+            event_id="event-1", summary="스터디", location="강남",
+            event_start=self.decision.event.start_time, travel_minutes=35,
+            is_estimated=False, departure_time=self.decision.departure_time,
+            prep_alert_time=None, transport_mode="transit", provider="google",
+            buffer_minutes=10, route_guide=guide,
+        )
+        message = format_scheduled_alert_message(ScheduledAlert(
+            "departure", plan.departure_time, plan,
+            evaluated_at=plan.departure_time - timedelta(minutes=10),
+        ))
+        self.assertIn("합정 → 구로디지털단지", message)
+        self.assertNotIn("14:10 2호선", message)
+        self.assertNotIn("14:30 1호선", message)
+        self.assertIn("탑승 시각을 생략", message)
 
     def test_send_notifications_posts_to_enabled_channels(self):
         settings = {

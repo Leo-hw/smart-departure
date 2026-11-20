@@ -46,6 +46,7 @@ class SchedulePlan:
     travel_source: str = "api"
     trusted_travel_minutes: int | None = None
     route_guide: RouteGuide | None = None
+    current_travel_minutes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,11 @@ def build_daily_plans(
                 travel_source=decision.travel_source,
                 trusted_travel_minutes=trusted_minutes,
                 route_guide=decision.route_guide,
+                current_travel_minutes=(
+                    decision.travel_minutes
+                    if decision.travel_source == "api" and not decision.is_estimated
+                    else None
+                ),
             )
         )
 
@@ -162,11 +168,7 @@ def _stable_transit_minutes(
         trusted = max(trusted or 0, decision.travel_minutes)
 
     effective = trusted if trusted is not None else decision.travel_minutes
-    estimated = (
-        decision.is_estimated
-        or decision.travel_source != "api"
-        or effective != decision.travel_minutes
-    )
+    estimated = decision.is_estimated or decision.travel_source != "api"
     return effective, trusted, estimated
 
 
@@ -421,6 +423,10 @@ def _deserialize_plans(raw_plans: Iterable[dict[str, Any]]) -> list[SchedulePlan
                 trusted_travel_minutes=(
                     int(raw_plan["trusted_travel_minutes"])
                     if raw_plan.get("trusted_travel_minutes") is not None else None
+                ),
+                current_travel_minutes=(
+                    int(raw_plan["current_travel_minutes"])
+                    if raw_plan.get("current_travel_minutes") is not None else None
                 ),
             )
         )
