@@ -12,10 +12,25 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from core.route_guide import RouteGuide, RouteSegment
+
 
 # Routes API (Directions API Legacy는 새 키로 호출할 수 없음 — T-015)
 _GOOGLE_ROUTES_ENDPOINT = "https://routes.googleapis.com/directions/v2:computeRoutes"
 _GOOGLE_ROUTES_FIELD_MASK = "routes.duration"
+_GOOGLE_TRANSIT_FIELD_MASK = ",".join(
+    (
+        _GOOGLE_ROUTES_FIELD_MASK,
+        "routes.legs.steps.travelMode",
+        "routes.legs.steps.distanceMeters",
+        "routes.legs.steps.transitDetails.stopDetails.departureStop.name",
+        "routes.legs.steps.transitDetails.stopDetails.arrivalStop.name",
+        "routes.legs.steps.transitDetails.stopDetails.departureTime",
+        "routes.legs.steps.transitDetails.transitLine.name",
+        "routes.legs.steps.transitDetails.transitLine.nameShort",
+        "routes.legs.steps.transitDetails.stopCount",
+    )
+)
 _GOOGLE_TRAVEL_MODES = {"transit": "TRANSIT", "driving": "DRIVE", "walking": "WALK"}
 _KAKAO_ADDRESS_ENDPOINT = "https://dapi.kakao.com/v2/local/search/address.json"
 _KAKAO_DIRECTIONS_ENDPOINT = "https://apis-navi.kakaomobility.com/v1/directions"
@@ -30,6 +45,7 @@ class TravelResult:
     is_estimated: bool
     provider: str
     source: str = "api"
+    route_guide: RouteGuide | None = None
 
 
 def _utcnow() -> datetime:
@@ -116,13 +132,15 @@ class _GoogleMapsProvider(_BaseProvider):
     provider_name = "google"
 
     def calculate(self, origin: str, destination: str, transport_mode: str) -> TravelResult:
-        duration_minutes = self._fetch_duration_from_api(origin, destination, transport_mode)
-        if duration_minutes is not None:
+        fetched = self._fetch_route_from_api(origin, destination, transport_mode)
+        if fetched is not None:
+            duration_minutes, route_guide = fetched
             _write_cache(origin, destination, transport_mode, duration_minutes)
             return TravelResult(
                 duration_minutes=duration_minutes,
                 is_estimated=False,
                 provider=self.provider_name,
+                route_guide=route_guide,
             )
 
         cached_duration = _read_fresh_cache(origin, destination, transport_mode)
@@ -141,9 +159,9 @@ class _GoogleMapsProvider(_BaseProvider):
             source="estimate",
         )
 
-    def _fetch_duration_from_api(
-        self, origin: str, destination: str, transport_mode: str
-    ) -> Optional[int]:
+    def _fetch_route_from_api(
+        self, origin: str, destination: str, transport_mode: str,
+    ) -> tuple[int, RouteGuide | None] | None:
         api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
         if not api_key:
             return None
@@ -161,7 +179,10 @@ class _GoogleMapsProvider(_BaseProvider):
             headers={
                 "Content-Type": "application/json",
                 "X-Goog-Api-Key": api_key,
-                "X-Goog-FieldMask": _GOOGLE_ROUTES_FIELD_MASK,
+                "X-Goog-FieldMask": (
+                    _GOOGLE_TRANSIT_FIELD_MASK if transport_mode == "transit"
+                    else _GOOGLE_ROUTES_FIELD_MASK
+                ),
             },
             method="POST",
         )
@@ -177,7 +198,8 @@ class _GoogleMapsProvider(_BaseProvider):
 
         # 경로가 없으면 Routes API는 빈 객체 {}를 돌려준다. duration은 "2100s" 형식 문자열
         try:
-            duration = payload["routes"][0]["duration"]
+            route = payload["routes"][0]
+            duration = route["duration"]
         except (KeyError, IndexError, TypeError):
             return None
         if not isinstance(duration, str) or not duration.endswith("s"):
@@ -188,7 +210,52 @@ class _GoogleMapsProvider(_BaseProvider):
             return None
         if seconds < 0:
             return None
-        return int(seconds // 60)
+        guide = _parse_google_transit_guide(route) if transport_mode == "transit" else None
+        return int(seconds // 60), guide
+
+
+def _parse_google_transit_guide(route: dict[str, Any]) -> RouteGuide | None:
+    segments: list[RouteSegment] = []
+    legs = route.get("legs")
+    if not isinstance(legs, list):
+        return None
+    for leg in legs:
+        if not isinstance(leg, dict) or not isinstance(leg.get("steps"), list):
+            continue
+        for step in leg["steps"]:
+            if not isinstance(step, dict):
+                continue
+            mode = step.get("travelMode")
+            if mode == "WALK":
+                distance = step.get("distanceMeters")
+                if not isinstance(distance, int) or distance <= 0:
+                    continue
+                if segments and segments[-1].mode == "walk":
+                    previous = segments.pop()
+                    segments.append(RouteSegment("walk", (previous.distance_meters or 0) + distance))
+                else:
+                    segments.append(RouteSegment("walk", distance))
+            elif mode == "TRANSIT":
+                details = step.get("transitDetails") or {}
+                if not isinstance(details, dict):
+                    continue
+                stops = details.get("stopDetails") or {}
+                line = details.get("transitLine") or {}
+                if not isinstance(stops, dict) or not isinstance(line, dict):
+                    continue
+                departure = stops.get("departureStop") or {}
+                arrival = stops.get("arrivalStop") or {}
+                if not isinstance(departure, dict) or not isinstance(arrival, dict):
+                    continue
+                segments.append(RouteSegment(
+                    mode="transit",
+                    line=line.get("nameShort") or line.get("name"),
+                    origin=departure.get("name"),
+                    destination=arrival.get("name"),
+                    stop_count=details.get("stopCount"),
+                    departure_time=stops.get("departureTime"),
+                ))
+    return RouteGuide(tuple(segments)) if segments else None
 
 
 class _KakaoMapsProvider(_BaseProvider):

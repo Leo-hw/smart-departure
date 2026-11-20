@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from core.calendar_service import CalendarEvent
 from core.dedup import filter_pending_decisions
 from core.departure_engine import DepartureDecision
+from core.route_guide import RouteGuide, RouteSegment
 from core.privacy import short_id
 from core.scheduler import (
     PrepStage,
@@ -56,6 +57,7 @@ class SchedulerTests(unittest.TestCase):
             should_alert=False,
             is_estimated=False,
             provider="google",
+            route_guide=RouteGuide((RouteSegment("walk", distance_meters=120),)),
         )
 
         with patch("core.scheduler.build_departure_decisions", return_value=[decision]):
@@ -63,6 +65,7 @@ class SchedulerTests(unittest.TestCase):
 
         self.assertEqual(len(plans), 1)
         self.assertEqual(plans[0].occasion, "casual")
+        self.assertEqual(plans[0].route_guide, decision.route_guide)
         self.assertEqual(plans[0].stages, (PrepStage("준비 시작", datetime(2026, 4, 19, 13, 15, tzinfo=KST)),))
 
     def test_occasion_priority_and_override(self):
@@ -395,6 +398,23 @@ class SchedulerTests(unittest.TestCase):
             ScheduledAlert("prep", stage.alert_time, plan, stage_id=stage.stage_id).dedup_key,
         )
         mock_build.assert_not_called()
+
+    def test_route_guide_is_not_persisted_to_snapshot(self):
+        plan = SchedulePlan(**{
+            **vars(self._make_plan()),
+            "route_guide": RouteGuide((RouteSegment("transit", line="2호선", origin="강남역"),)),
+        })
+        with tempfile.TemporaryDirectory() as tempdir:
+            schedule_path = Path(tempdir) / "schedule_today.json"
+            with patch("core.scheduler.SCHEDULE_TODAY_PATH", schedule_path), patch(
+                "core.scheduler.build_daily_plans", return_value=[plan]
+            ):
+                loaded = load_or_build_daily_schedule(self.settings, now=self.now)
+            snapshot = json.loads(schedule_path.read_text(encoding="utf-8"))
+
+        self.assertIsNotNone(loaded[0].route_guide)
+        self.assertNotIn("route_guide", snapshot["plans"][0])
+        self.assertNotIn("강남역", json.dumps(snapshot, ensure_ascii=False))
 
     def test_transit_baseline_survives_schedule_rebuild(self):
         event = CalendarEvent("test", "Gangnam", datetime(2026, 4, 19, 19, 0, tzinfo=KST), "event-1")

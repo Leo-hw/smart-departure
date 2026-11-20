@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from core.calendar_service import CalendarEvent, get_upcoming_events
 from core.maps_service import get_travel_time
+from core.route_guide import RouteGuide
 from shared.config.runtime_config import load_settings
 
 KST = ZoneInfo("Asia/Seoul")
@@ -25,6 +26,7 @@ class DepartureDecision:
     is_estimated: bool
     provider: str
     travel_source: str = "api"
+    route_guide: RouteGuide | None = None
 
 
 def build_departure_decisions(
@@ -62,6 +64,7 @@ def build_departure_decisions(
                 is_estimated=travel_result.is_estimated,
                 provider=travel_result.provider,
                 travel_source=travel_result.source,
+                route_guide=travel_result.route_guide,
             )
         )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import unittest
+from dataclasses import replace
 from datetime import datetime
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
@@ -16,6 +17,7 @@ from core.notifier import (
 )
 from core.calendar_service import CalendarEvent
 from core.scheduler import SchedulePlan, ScheduledAlert
+from core.route_guide import RouteGuide, RouteSegment
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -57,6 +59,43 @@ class NotifierTests(unittest.TestCase):
         self.assertIn("강남구 역삼동 OO카페", message)
         self.assertIn("대중교통 약 35분", message)
         self.assertIn("버퍼 10분", message)
+
+    def test_route_guide_is_shown_with_provider_attribution(self):
+        guide = RouteGuide((
+            RouteSegment("walk", distance_meters=200),
+            RouteSegment(
+                "transit", line="2호선", origin="강남역", destination="시청역",
+                stop_count=8, departure_time="2026-04-16T05:30:00Z",
+            ),
+            RouteSegment(
+                "transit", line="1호선", origin="시청역", destination="서울역",
+                stop_count=1, departure_time="2026-04-16T05:48:00Z",
+            ),
+        ))
+        decision = replace(self.decision, route_guide=guide)
+        message = format_departure_message(decision)
+        self.assertIn("도보 약 200m", message)
+        self.assertIn("14:30 2호선: 강남역 → 시청역 (8정거장)", message)
+        self.assertIn("환승 · 14:48 1호선: 시청역 → 서울역", message)
+        self.assertIn("경로 정보: Google Maps", message)
+
+        plan = SchedulePlan(
+            event_id="event-1", summary="스터디 모임", location="강남",
+            event_start=decision.event.start_time, travel_minutes=35,
+            is_estimated=False, departure_time=decision.departure_time,
+            prep_alert_time=None, transport_mode="transit", provider="google",
+            buffer_minutes=10, route_guide=guide,
+        )
+        for alert_type in ("prep", "departure"):
+            with self.subTest(alert_type=alert_type):
+                alert = ScheduledAlert(alert_type, decision.departure_time, plan)
+                text = format_scheduled_alert_message(alert)
+                self.assertIn("강남역 → 시청역", text)
+                self.assertIn("경로 정보: Google Maps", text)
+                if alert_type == "prep":
+                    self.assertNotIn("14:30 2호선", text)
+                else:
+                    self.assertIn("14:30 2호선", text)
 
     def test_format_scheduled_alert_message_supports_prep_and_departure(self):
         plan = SchedulePlan(
